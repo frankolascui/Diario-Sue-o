@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Sueño">
+  <title>Diario de Sueño</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23000'/%3E%3Cpath d='M21 6a10 10 0 1 0 5 15A8 8 0 0 1 21 6z' fill='%235eead4'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Alegreya+Sans:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <nav class="nav" aria-label="Secciones">
+    <div class="nav-brand">Sueño</div>
+    <button class="nav-item on" data-screen="hoy"><span class="nav-glyph" aria-hidden="true">☾</span><span class="nav-label">Hoy</span></button>
+    <button class="nav-item" data-screen="registrar"><span class="nav-glyph" aria-hidden="true">✎</span><span class="nav-label">Registrar</span></button>
+    <button class="nav-item" data-screen="historial"><span class="nav-glyph" aria-hidden="true">▤</span><span class="nav-label">Historial</span></button>
+    <button class="nav-item" data-screen="datos"><span class="nav-glyph" aria-hidden="true">⇅</span><span class="nav-label">Datos</span></button>
+    <div class="nav-level mono" id="navCount">0 noches</div>
+    <div class="nav-version mono">Diario de Sueño v1.0</div>
+  </nav>
+
+  <main class="main">
+    <!-- HOY -->
+    <section class="screen" id="s-hoy">
+      <div class="stats" id="stats"></div>
+
+      <div class="now">
+        <span class="eyebrow">¿Qué hago ahora?</span>
+        <h2 id="nowTitle">Registrar la noche de hoy</h2>
+        <p class="now-sub" id="nowSub">Copia del Apple Watch las horas y las fases, y responde a las preguntas. Te lleva un minuto.</p>
+        <div class="row">
+          <button class="primary big" id="nowGo">▷ Registrar noche</button>
+          <button class="secondary big" id="nowHist">Ver historial</button>
+        </div>
+      </div>
+
+      <div class="columns">
+        <div class="panel">
+          <div class="panel-head"><h3>Últimas noches</h3><button class="link" data-goto="historial">Ver todas →</button></div>
+          <div id="recent" class="list"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h3>Media de 7 noches</h3></div>
+          <div id="phaseAvg"></div>
+          <div class="legend">
+            <span><i style="background:var(--awake)"></i>Despierto</span>
+            <span><i style="background:var(--rem)"></i>REM</span>
+            <span><i style="background:var(--core)"></i>Ligero</span>
+            <span><i style="background:var(--deep)"></i>Profundo</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- REGISTRAR -->
+    <form class="screen" id="s-registrar" hidden autocomplete="off">
+      <h1 class="screen-title">Registrar noche</h1>
+
+      <div class="panel">
+        <span class="eyebrow">La noche</span>
+        <label class="field"><span>Fecha al despertar</span><input type="date" id="fecha" required></label>
+      </div>
+
+      <div class="panel">
+        <span class="eyebrow">Lo que tú crees</span>
+        <p class="hint">Sin mirar el reloj. Así sabremos cuánto se parece tu percepción a la realidad.</p>
+        <div class="grid2">
+          <label class="field"><span>Me metí en la cama</span><input type="time" id="cama"></label>
+          <label class="field"><span>Creo que me dormí</span><input type="time" id="dormidoPerc"></label>
+          <label class="field"><span>Creo que me desperté</span><input type="time" id="despertarPerc"></label>
+          <label class="field"><span>Me levanté</span><input type="time" id="levantado"></label>
+        </div>
+      </div>
+
+      <div class="panel">
+        <span class="eyebrow">Lo que dice el Apple Watch</span>
+        <p class="hint">App Salud → Sueño → la noche de hoy.</p>
+        <div class="grid2">
+          <label class="field"><span>Me dormí (real)</span><input type="time" id="dormidoReal"></label>
+          <label class="field"><span>Me desperté (real)</span><input type="time" id="despertarReal"></label>
+        </div>
+        <div class="phase-head"><span></span><span>Fase</span><span>Horas</span><span>Min</span></div>
+        <div id="phases" class="phases"></div>
+        <div class="live" id="live"></div>
+      </div>
+
+      <div class="panel">
+        <span class="eyebrow">Cómo fue la noche</span>
+        <div class="q"><span class="q-label">Calidad del sueño</span><span class="hint">1 = fatal · 5 = genial</span><div class="segmented" data-name="calidad"></div></div>
+        <div class="q"><span class="q-label">¿Te levantaste descansado?</span><span class="hint">1 = destrozado · 5 = como nuevo</span><div class="segmented" data-name="descanso"></div></div>
+        <div class="q"><span class="q-label">Estrés al acostarte</span><span class="hint">1 = nada · 5 = mucho</span><div class="segmented" data-name="estres"></div></div>
+        <div class="grid2">
+          <label class="field"><span>Veces que te despertaste</span><input type="number" id="despertares" min="0" max="30" inputmode="numeric"></label>
+          <label class="field"><span>Siesta ayer (min)</span><input type="number" id="siesta" min="0" max="300" inputmode="numeric"></label>
+          <label class="field"><span>Última cafeína</span><input type="time" id="cafeina"><small class="hint">Vacío si no tomaste.</small></label>
+          <label class="field"><span>Última comida</span><input type="time" id="cena"></label>
+          <label class="field"><span>Pantalla en la última hora</span><select id="pantalla"><option value="">—</option><option value="no">No</option><option value="poco">Menos de 15 min</option><option value="si">Sí, bastante</option></select></label>
+          <label class="field"><span>Ejercicio ayer</span><select id="ejercicio"><option value="">—</option><option value="no">No</option><option value="manana">Por la mañana</option><option value="tarde">Por la tarde</option><option value="noche">Por la noche</option></select></label>
+          <label class="field"><span>Luz natural ayer</span><select id="luz"><option value="">—</option><option value="poca">Casi nada</option><option value="algo">Un rato</option><option value="mucha">Más de 1 h</option></select></label>
+          <label class="field"><span>Sueños</span><select id="suenos"><option value="">—</option><option value="no">No recuerdo</option><option value="si">Sí</option><option value="pesadilla">Pesadilla</option></select></label>
+        </div>
+        <label class="field"><span>Notas</span><textarea id="notas" rows="3" placeholder="Examen mañana, ruido en la calle, cené tarde…"></textarea></label>
+      </div>
+
+      <div class="row sticky-actions">
+        <button type="submit" class="primary big">✓ Guardar noche</button>
+        <button type="button" class="ghost big" id="clearBtn">Vaciar</button>
+        <span class="toast" id="toast" role="status"></span>
+      </div>
+    </form>
+
+    <!-- HISTORIAL -->
+    <section class="screen" id="s-historial" hidden>
+      <h1 class="screen-title">Historial</h1>
+      <div class="panel">
+        <div class="legend">
+          <span><i style="background:var(--awake)"></i>Despierto</span>
+          <span><i style="background:var(--rem)"></i>REM</span>
+          <span><i style="background:var(--core)"></i>Ligero</span>
+          <span><i style="background:var(--deep)"></i>Profundo</span>
+        </div>
+        <div id="history" class="list"></div>
+      </div>
+    </section>
+
+    <!-- DATOS -->
+    <section class="screen" id="s-datos" hidden>
+      <h1 class="screen-title">Datos</h1>
+      <div class="panel">
+        <span class="eyebrow">Exportar</span>
+        <p class="hint">JSON para que Claude lo analice. CSV para Excel o Google Sheets.</p>
+        <div class="row">
+          <button class="primary" id="dlJson">Descargar JSON</button>
+          <button class="secondary" id="dlCsv">Descargar CSV</button>
+          <button class="secondary" id="copyJson">Copiar JSON</button>
+        </div>
+        <span class="toast" id="expToast" role="status"></span>
+      </div>
+      <div class="panel">
+        <span class="eyebrow">Importar</span>
+        <p class="hint">Tus noches se guardan en este navegador. Para pasarlas a otro dispositivo, descarga el JSON aquí e impórtalo allí. Las noches con la misma fecha se sustituyen.</p>
+        <label class="secondary file-btn">Importar JSON<input type="file" id="importFile" accept="application/json,.json"></label>
+        <span class="toast" id="impToast" role="status"></span>
+      </div>
+      <div class="panel">
+        <span class="eyebrow">Zona peligrosa</span>
+        <div class="row" id="wipeRow"><button class="ghost danger" id="wipeBtn">Borrar todas las noches</button></div>
+      </div>
+    </section>
+  </main>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
