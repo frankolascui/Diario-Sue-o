@@ -2,33 +2,76 @@
 (() => {
   'use strict';
   const KEY = 'diario-sueno:noches';
+  const DRAFT_KEY = 'diario-sueno:borrador';
+  const SET_KEY = 'diario-sueno:ajustes';
   const PHASES = [
     { k: 'despierto', n: 'Despierto', c: 'var(--awake)' },
     { k: 'rem', n: 'REM', c: 'var(--rem)' },
     { k: 'ligero', n: 'Ligero', c: 'var(--core)' },
     { k: 'profundo', n: 'Profundo', c: 'var(--deep)' },
   ];
+  // Metas del plan de sueño: latencia ≤30 min (regla de escalón), eficiencia ≥85 %, descanso ≥4/5, levantarse ±15 min.
+  const META = { latencia: 30, eficiencia: 85, descanso: 4, regularidad: 15, noches: 7 };
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-
-  // ---------- almacenamiento ----------
-  let nights = load();
-  function load() {
-    try { const v = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
-  }
-  function persist() {
-    nights.sort((a, b) => b.fecha.localeCompare(a.fecha));
-    try { localStorage.setItem(KEY, JSON.stringify(nights)); return true; } catch { return false; }
-  }
 
   // ---------- tiempo ----------
   const today = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
   const toMin = (t) => { if (!t) return null; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
   const span = (a, b) => { const x = toMin(a), y = toMin(b); if (x == null || y == null) return null; let d = y - x; if (d < 0) d += 1440; return d; };
   const diffClock = (a, b) => { const x = toMin(a), y = toMin(b); if (x == null || y == null) return null; let d = y - x; if (d > 720) d -= 1440; if (d < -720) d += 1440; return d; };
-  const fmt = (m) => (m == null || isNaN(m) ? '—' : `${Math.floor(m / 60)}h ${String(Math.round(m % 60)).padStart(2, '0')}m`);
+  const fromMin = (m) => { m = ((Math.round(m) % 1440) + 1440) % 1440; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
+  const fmt = (m) => (m == null || isNaN(m) ? '—' : `${m < 0 ? '-' : ''}${Math.floor(Math.abs(m) / 60)}h ${String(Math.round(Math.abs(m) % 60)).padStart(2, '0')}m`);
   const num = (v) => (v === '' || v == null ? null : Number(v));
   const fechaLarga = (f) => { try { return new Date(f + 'T12:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' }); } catch { return f; } };
+  const fechaCorta = (f) => { try { return new Date(f + 'T12:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric' }); } catch { return f; } };
+  const prevDay = (f) => { const d = new Date(f + 'T12:00'); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); };
+
+  // ---------- limpieza de datos (importación y versiones antiguas) ----------
+  const cTime = (v) => (typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? v : null);
+  const cNum = (v, max) => { const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v; return typeof n === 'number' && isFinite(n) && n >= 0 && n <= max ? Math.round(n) : null; };
+  const cScale = (v) => { const n = cNum(v, 5); return n >= 1 ? n : null; };
+  const cOpt = (v, opts) => (opts.includes(v) ? v : null);
+  function normalize(n) {
+    const p = n.percibido || {}, w = n.reloj || {}, f = w.fases_min || {}, q = n.preguntas || {};
+    const r = {
+      fecha: n.fecha,
+      percibido: { cama: cTime(p.cama), dormido: cTime(p.dormido), despertar: cTime(p.despertar), levantado: cTime(p.levantado) },
+      reloj: {
+        dormido: cTime(w.dormido), despertar: cTime(w.despertar), total_dormido_min: cNum(w.total_dormido_min, 1440),
+        fases_min: Object.fromEntries(PHASES.map((ph) => [ph.k, cNum(f[ph.k], 1440)])),
+      },
+      preguntas: {
+        calidad: cScale(q.calidad), descanso: cScale(q.descanso), estres: cScale(q.estres),
+        despertares: cNum(q.despertares, 30), despierto_noche_min: cNum(q.despierto_noche_min, 600), siesta_min: cNum(q.siesta_min, 300),
+        ultima_cafeina: cTime(q.ultima_cafeina), ultima_comida: cTime(q.ultima_comida),
+        pantalla_ultima_hora: cOpt(q.pantalla_ultima_hora, ['no', 'poco', 'si']), ejercicio: cOpt(q.ejercicio, ['no', 'manana', 'tarde', 'noche']),
+        luz_natural: cOpt(q.luz_natural, ['poca', 'algo', 'mucha']), suenos: cOpt(q.suenos, ['no', 'si', 'pesadilla']),
+        notas: typeof q.notas === 'string' && q.notas.trim() ? q.notas.trim().slice(0, 2000) : null,
+      },
+    };
+    if (typeof n.actualizado === 'string') r.actualizado = n.actualizado;
+    r.calculado = derive(r);
+    return r;
+  }
+  const validNight = (n) => n && typeof n === 'object' && /^\d{4}-\d{2}-\d{2}$/.test(n.fecha);
+
+  // ---------- almacenamiento ----------
+  const readKey = (k, fb) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? fb; } catch { return fb; } };
+  const writeKey = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } };
+  let nights = load();
+  function load() {
+    const v = readKey(KEY, []);
+    return Array.isArray(v) ? v.filter(validNight).map(normalize).sort((a, b) => b.fecha.localeCompare(a.fecha)) : [];
+  }
+  function persist() {
+    nights.sort((a, b) => b.fecha.localeCompare(a.fecha));
+    return writeKey(KEY, nights);
+  }
+  let settings = { levantar: '06:00', horas: 9, ultimaCopia: null, ...readKey(SET_KEY, {}) };
+  const saveSettings = () => writeKey(SET_KEY, settings);
+  // Pide a Safari que no borre los datos por falta de uso (las webs añadidas a la pantalla de inicio ya están exentas).
+  try { navigator.storage?.persist?.(); } catch {}
 
   // ---------- navegación ----------
   const screens = ['hoy', 'registrar', 'historial', 'datos'];
@@ -41,9 +84,17 @@
   document.querySelectorAll('.nav-item').forEach((b) => b.addEventListener('click', () => go(b.dataset.screen)));
   document.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => go(b.dataset.goto)));
   $('nowHist').addEventListener('click', () => go('historial'));
-  $('nowGo').addEventListener('click', () => { const ex = nights.find((n) => n.fecha === today()); if (ex) fillForm(ex); else { clearForm(); $('fecha').value = today(); } go('registrar'); });
+  $('nowGo').addEventListener('click', () => {
+    const d = readKey(DRAFT_KEY, null), ex = nights.find((n) => n.fecha === today());
+    if (d?.night?.fecha === today()) loadDraft(d);
+    else if (ex) fillForm(ex);
+    else { clearForm(); $('fecha').value = today(); updateLive(); }
+    go('registrar');
+  });
 
   // ---------- formulario ----------
+  let origFecha = null; // fecha de la noche guardada que se está editando (para moverla si cambias la fecha)
+  let confirmSig = null; // avisos ya mostrados: el segundo «Guardar» guarda igualmente
   $('phases').innerHTML = PHASES.map((p) => `<div class="phase"><span class="dot" style="background:${p.c}"></span><span>${p.n}</span>
     <input type="number" id="ph-${p.k}-h" min="0" max="14" inputmode="numeric" placeholder="0" aria-label="${p.n}, horas">
     <input type="number" id="ph-${p.k}-m" min="0" max="59" inputmode="numeric" placeholder="0" aria-label="${p.n}, minutos"></div>`).join('');
@@ -61,17 +112,19 @@
       const on = Number(b.dataset.v) === scales[n]; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
     });
   }
+  const hm = (hId, mId) => { const h = num($(hId).value), m = num($(mId).value); return h == null && m == null ? null : (h || 0) * 60 + (m || 0); };
+  const setHm = (hId, mId, v) => { $(hId).value = v == null ? '' : Math.floor(v / 60); $(mId).value = v == null ? '' : v % 60; };
 
   function readForm() {
     const fases = {};
-    PHASES.forEach((p) => { const h = num($(`ph-${p.k}-h`).value), m = num($(`ph-${p.k}-m`).value); fases[p.k] = h == null && m == null ? null : (h || 0) * 60 + (m || 0); });
+    PHASES.forEach((p) => { fases[p.k] = hm(`ph-${p.k}-h`, `ph-${p.k}-m`); });
     const r = {
       fecha: $('fecha').value,
       percibido: { cama: $('cama').value || null, dormido: $('dormidoPerc').value || null, despertar: $('despertarPerc').value || null, levantado: $('levantado').value || null },
-      reloj: { dormido: $('dormidoReal').value || null, despertar: $('despertarReal').value || null, fases_min: fases },
+      reloj: { dormido: $('dormidoReal').value || null, despertar: $('despertarReal').value || null, total_dormido_min: hm('tot-h', 'tot-m'), fases_min: fases },
       preguntas: {
         calidad: scales.calidad, descanso: scales.descanso, estres: scales.estres,
-        despertares: num($('despertares').value), siesta_min: num($('siesta').value),
+        despertares: num($('despertares').value), despierto_noche_min: num($('despiertoNoche').value), siesta_min: num($('siesta').value),
         ultima_cafeina: $('cafeina').value || null, ultima_comida: $('cena').value || null,
         pantalla_ultima_hora: $('pantalla').value || null, ejercicio: $('ejercicio').value || null,
         luz_natural: $('luz').value || null, suenos: $('suenos').value || null, notas: $('notas').value.trim() || null,
@@ -80,60 +133,147 @@
     r.calculado = derive(r);
     return r;
   }
+
   function derive(r) {
-    const f = r.reloj.fases_min;
-    const dormidoFases = ['rem', 'ligero', 'profundo'].reduce((s, k) => s + (f[k] || 0), 0) || null;
-    const porHoras = span(r.reloj.dormido, r.reloj.despertar);
+    const p = r.percibido || {}, w = r.reloj || {}, f = w.fases_min || {}, q = r.preguntas || {};
+    const sum = (ks) => (ks.some((k) => f[k] != null) ? ks.reduce((s, k) => s + (f[k] || 0), 0) : null);
+    const fasesDormido = sum(['rem', 'ligero', 'profundo']);
+    const fasesTodas = sum(['despierto', 'rem', 'ligero', 'profundo']);
+    const ventana = span(w.dormido, w.despertar);
+    // Sueño real: el total de Salud si lo apuntaste; si no, REM + ligero + profundo; si no, ventana del reloj menos lo despierto.
+    const sueno = w.total_dormido_min || fasesDormido || (ventana == null ? null : ventana - (f.despierto || 0));
+    const enCama = span(p.cama, p.levantado);
+    const percibido = span(p.dormido, p.despertar);
     const c = {
-      sueno_real_min: dormidoFases ?? (porHoras == null ? null : porHoras - (f.despierto || 0)),
-      sueno_percibido_min: span(r.percibido.dormido, r.percibido.despertar),
-      latencia_percibida_min: span(r.percibido.cama, r.percibido.dormido),
-      error_hora_dormido_min: diffClock(r.reloj.dormido, r.percibido.dormido),
-      error_hora_despertar_min: diffClock(r.reloj.despertar, r.percibido.despertar),
+      sueno_real_min: sueno,
+      tiempo_en_cama_min: enCama,
+      eficiencia_pct: sueno && enCama ? Math.round((sueno / enCama) * 100) : null,
+      latencia_real_min: span(p.cama, w.dormido),
+      latencia_percibida_min: span(p.cama, p.dormido),
+      sueno_percibido_min: percibido == null ? null : Math.max(0, percibido - (q.despierto_noche_min || 0)),
+      error_hora_dormido_min: diffClock(w.dormido, p.dormido),
+      error_hora_despertar_min: diffClock(w.despertar, p.despertar),
       pct: {},
+      avisos: [],
     };
-    const tot = PHASES.reduce((s, p) => s + (f[p.k] || 0), 0);
-    PHASES.forEach((p) => { c.pct[p.k] = tot ? Math.round(((f[p.k] || 0) / tot) * 100) : null; });
+    PHASES.forEach((ph) => { c.pct[ph.k] = fasesTodas ? Math.round(((f[ph.k] || 0) / fasesTodas) * 100) : null; });
+
+    // ---- coherencia ----
+    const a = c.avisos;
+    const chain = (pts) => {
+      const xs = pts.filter(([, t]) => t);
+      for (let i = 1; i < xs.length; i++) {
+        // Margen de 20 min: el reloj y tus horas apuntadas a mano no coinciden al minuto.
+        const d = span(xs[i - 1][1], xs[i][1]);
+        if (d > 720 && d < 1440 - 20) a.push(`«${xs[i][0]}» (${xs[i][1]}) parece anterior a «${xs[i - 1][0]}» (${xs[i - 1][1]}). Revisa el orden o si es AM/PM.`);
+      }
+    };
+    chain([['Me metí en la cama', p.cama], ['Me dormí (real)', w.dormido], ['Me desperté (real)', w.despertar], ['Me levanté', p.levantado]]);
+    chain([['Me metí en la cama', p.cama], ['Creo que me dormí', p.dormido], ['Creo que me desperté', p.despertar], ['Me levanté', p.levantado]]);
+    if (fasesTodas && ventana != null && Math.abs(ventana - fasesTodas) > 15) {
+      a.push(`Las fases suman ${fmt(fasesTodas)}, pero de «me dormí» a «me desperté» hay ${fmt(ventana)} (${Math.abs(ventana - fasesTodas)} min de diferencia). Revisa en Salud que hayas copiado todas las fases.`);
+    }
+    if (w.total_dormido_min && fasesDormido && Math.abs(w.total_dormido_min - fasesDormido) > 5) {
+      a.push(`El total de Salud (${fmt(w.total_dormido_min)}) no coincide con REM + ligero + profundo (${fmt(fasesDormido)}).`);
+    }
+    if (c.eficiencia_pct > 100) a.push('Sale más sueño que tiempo en la cama: revisa las horas de cama y de levantarte.');
+    if (enCama != null && enCama > 14 * 60) a.push(`${fmt(enCama)} en la cama es mucho: ¿están bien las horas?`);
     return c;
   }
-  function fillForm(r) {
-    clearForm();
-    $('fecha').value = r.fecha;
+
+  function fillForm(r, fromDraft) {
+    clearForm(true);
+    $('fecha').value = r.fecha || today();
     const p = r.percibido || {}, w = r.reloj || {}, q = r.preguntas || {};
     $('cama').value = p.cama || ''; $('dormidoPerc').value = p.dormido || ''; $('despertarPerc').value = p.despertar || ''; $('levantado').value = p.levantado || '';
     $('dormidoReal').value = w.dormido || ''; $('despertarReal').value = w.despertar || '';
-    PHASES.forEach((ph) => { const v = w.fases_min?.[ph.k]; $(`ph-${ph.k}-h`).value = v == null ? '' : Math.floor(v / 60); $(`ph-${ph.k}-m`).value = v == null ? '' : v % 60; });
+    setHm('tot-h', 'tot-m', w.total_dormido_min ?? null);
+    PHASES.forEach((ph) => setHm(`ph-${ph.k}-h`, `ph-${ph.k}-m`, w.fases_min?.[ph.k] ?? null));
     ['calidad', 'descanso', 'estres'].forEach((n) => { scales[n] = q[n] ?? null; paintScale(n); });
-    $('despertares').value = q.despertares ?? ''; $('siesta').value = q.siesta_min ?? '';
+    $('despertares').value = q.despertares ?? ''; $('despiertoNoche').value = q.despierto_noche_min ?? ''; $('siesta').value = q.siesta_min ?? '';
     $('cafeina').value = q.ultima_cafeina || ''; $('cena').value = q.ultima_comida || '';
     $('pantalla').value = q.pantalla_ultima_hora || ''; $('ejercicio').value = q.ejercicio || '';
     $('luz').value = q.luz_natural || ''; $('suenos').value = q.suenos || ''; $('notas').value = q.notas || '';
+    if (!fromDraft) origFecha = nights.some((n) => n.fecha === r.fecha) ? r.fecha : null;
     updateLive();
   }
-  function clearForm() {
+  function loadDraft(d) {
+    fillForm(d.night, true);
+    origFecha = d.orig ?? null;
+    $('draftNote').hidden = false;
+    $('draftNote').textContent = 'Borrador recuperado: no se ha guardado todavía.';
+    updateLive();
+  }
+  function clearForm(keepDraft) {
     const f = $('fecha').value; $('s-registrar').reset(); $('fecha').value = f || today();
     Object.keys(scales).forEach((n) => { scales[n] = null; paintScale(n); });
-    toast('toast', ''); updateLive();
+    origFecha = null; confirmSig = null; $('draftNote').hidden = true;
+    toast('toast', '');
+    if (keepDraft !== true) { try { localStorage.removeItem(DRAFT_KEY); } catch {} updateLive(); }
   }
+  function saveDraft() { writeKey(DRAFT_KEY, { night: readForm(), orig: origFecha }); }
+
   function updateLive() {
     const c = readForm().calculado, e = c.error_hora_dormido_min;
-    $('live').innerHTML = `<div><b>${fmt(c.sueno_real_min)}</b><small>sueño real</small></div>
-      <div><b>${fmt(c.sueno_percibido_min)}</b><small>lo que crees</small></div>
-      <div><b>${e == null ? '—' : (e > 0 ? '+' : '') + e + ' min'}</b><small>error al dormirte</small></div>`;
+    const cell = (v, l) => `<div><b>${v}</b><small>${l}</small></div>`;
+    $('live').innerHTML = [
+      cell(fmt(c.sueno_real_min), 'sueño real'),
+      cell(c.eficiencia_pct == null ? '—' : c.eficiencia_pct + '%', `eficiencia (meta ≥${META.eficiencia}%)`),
+      cell(c.latencia_real_min == null ? '—' : c.latencia_real_min + ' min', `latencia (meta ≤${META.latencia})`),
+      cell(fmt(c.sueno_percibido_min), 'lo que crees'),
+      cell(e == null ? '—' : (e > 0 ? '+' : '') + e + ' min', 'error al dormirte'),
+    ].join('');
+    $('avisos').hidden = !c.avisos.length;
+    $('avisos').innerHTML = c.avisos.map((t) => `<li>${esc(t)}</li>`).join('');
+    renderDelete();
   }
-  $('s-registrar').addEventListener('input', updateLive);
-  $('s-registrar').addEventListener('click', (e) => { if (e.target.closest('.seg')) updateLive(); });
-  $('fecha').addEventListener('change', () => { const ex = nights.find((n) => n.fecha === $('fecha').value); if (ex) fillForm(ex); });
-  $('clearBtn').addEventListener('click', clearForm);
+  function renderDelete(ask) {
+    $('delRow').innerHTML = !origFecha ? '' : ask
+      ? '<button type="button" class="ghost danger" data-del="yes">Sí, borrar</button> <button type="button" class="ghost" data-del="no">No</button>'
+      : '<button type="button" class="ghost danger" data-del="ask">Borrar noche</button>';
+  }
+  $('delRow').addEventListener('click', (e) => {
+    const act = e.target.closest('[data-del]')?.dataset.del; if (!act) return;
+    if (act === 'ask') return renderDelete(true);
+    if (act === 'yes') {
+      const f = origFecha;
+      nights = nights.filter((n) => n.fecha !== f); persist(); clearForm(); renderAll();
+      toast('toast', `Noche del ${f} borrada.`, 'ok');
+      return;
+    }
+    renderDelete();
+  });
+  $('s-registrar').addEventListener('input', () => { confirmSig = null; updateLive(); saveDraft(); });
+  $('s-registrar').addEventListener('click', (e) => { if (e.target.closest('.seg')) { updateLive(); saveDraft(); } });
+  $('fecha').addEventListener('change', () => {
+    const f = $('fecha').value, ex = nights.find((n) => n.fecha === f);
+    if (ex) return fillForm(ex);
+    if (origFecha && origFecha !== f) {
+      $('draftNote').hidden = false;
+      $('draftNote').textContent = `Al guardar, la noche del ${origFecha} pasará al ${f}. Para registrar otra noche, pulsa «Vaciar» primero.`;
+    }
+  });
+  $('clearBtn').addEventListener('click', () => clearForm());
   $('s-registrar').addEventListener('submit', (e) => {
     e.preventDefault();
     const r = readForm();
     if (!r.fecha) { toast('toast', 'Pon la fecha de la noche.', 'err'); return; }
+    if (r.fecha > today()) { toast('toast', 'La fecha es del futuro. Pon la fecha del día en que te despertaste.', 'err'); return; }
+    const sig = JSON.stringify(r.calculado.avisos);
+    if (r.calculado.avisos.length && confirmSig !== sig) {
+      confirmSig = sig;
+      toast('toast', 'Hay datos que no cuadran (en amarillo). Corrígelos o pulsa «Guardar» otra vez para guardar igualmente.', 'err');
+      $('avisos').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
     r.actualizado = new Date().toISOString();
-    nights = nights.filter((n) => n.fecha !== r.fecha); nights.push(r);
+    const moved = origFecha && origFecha !== r.fecha ? origFecha : null;
+    nights = nights.filter((n) => n.fecha !== r.fecha && n.fecha !== moved); nights.push(r);
     if (!persist()) { toast('toast', 'No se pudo guardar: este navegador bloquea el almacenamiento (¿modo privado?).', 'err'); return; }
-    renderAll();
-    toast('toast', `Noche del ${r.fecha} guardada.`, 'ok');
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+    origFecha = r.fecha; confirmSig = null; $('draftNote').hidden = true;
+    renderAll(); renderDelete();
+    toast('toast', moved ? `Noche movida del ${moved} al ${r.fecha}.` : `Noche del ${r.fecha} guardada.`, 'ok');
   });
 
   function toast(id, msg, kind) { const t = $(id); t.textContent = msg; t.className = 'toast ' + (kind || ''); }
@@ -141,23 +281,21 @@
   // ---------- render ----------
   function streak() {
     const set = new Set(nights.map((n) => n.fecha));
-    const d = new Date(today() + 'T12:00');
-    if (!set.has(today())) d.setDate(d.getDate() - 1);
-    let s = 0;
-    while (set.has(d.toISOString().slice(0, 10))) { s++; d.setDate(d.getDate() - 1); }
+    let d = set.has(today()) ? today() : prevDay(today()), s = 0;
+    while (set.has(d)) { s++; d = prevDay(d); }
     return s;
   }
   const avgOf = (arr, fn) => { const v = arr.map(fn).filter((x) => x != null && !isNaN(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
 
   function renderStats() {
-    const last = nights[0], week = nights.slice(0, 7);
-    const deepPct = last?.calculado?.pct?.profundo;
-    const q = avgOf(week, (n) => n.preguntas?.calidad);
+    const last = nights[0], week = nights.slice(0, 7), lc = last?.calculado || {};
+    const d = avgOf(week, (n) => n.preguntas?.descanso);
     const tiles = [
-      { i: '☾', v: fmt(last?.calculado?.sueno_real_min), l: 'última noche', bar: last?.calculado?.sueno_real_min ? Math.min(100, (last.calculado.sueno_real_min / 480) * 100) : 0 },
-      { i: '◆', v: deepPct == null ? '—' : deepPct + '%', l: 'sueño profundo' },
-      { i: '★', v: q == null ? '—' : q.toFixed(1) + '/5', l: 'calidad (7 noches)', bar: q ? (q / 5) * 100 : 0 },
-      { i: '⏱', v: fmt(avgOf(week, (n) => n.calculado?.sueno_real_min)), l: 'media (7 noches)' },
+      { i: '☾', v: fmt(lc.sueno_real_min), l: 'última noche', bar: lc.sueno_real_min ? Math.min(100, (lc.sueno_real_min / 540) * 100) : 0 },
+      { i: '◎', v: lc.eficiencia_pct == null ? '—' : lc.eficiencia_pct + '%', l: `eficiencia (≥${META.eficiencia}%)`, bar: lc.eficiencia_pct == null ? 0 : Math.min(100, lc.eficiencia_pct) },
+      { i: '⏱', v: lc.latencia_real_min == null ? '—' : lc.latencia_real_min + ' min', l: `latencia (≤${META.latencia})` },
+      { i: '★', v: d == null ? '—' : d.toFixed(1) + '/5', l: 'descanso (7 noches)', bar: d ? (d / 5) * 100 : 0 },
+      { i: '∑', v: fmt(avgOf(week, (n) => n.calculado?.sueno_real_min)), l: 'media (7 noches)' },
       { i: '🔥', v: String(streak()), l: 'días seguidos' },
     ];
     $('stats').innerHTML = tiles.map((t) => `<div class="stat"><span class="stat-icon" aria-hidden="true">${t.i}</span><div class="stat-body">
@@ -170,20 +308,63 @@
       ? (nights.length >= 7 ? 'Ya tienes datos suficientes: exporta el JSON y pide a Claude que lo analice.' : `Llevas ${nights.length} de 7 noches para el primer análisis. Mañana, otra.`)
       : 'Copia del Apple Watch las horas y las fases, y responde a las preguntas. Te lleva un minuto.';
     $('nowGo').textContent = done ? '✎ Editar noche de hoy' : '▷ Registrar noche';
+
+    const days = settings.ultimaCopia ? Math.floor((Date.now() - new Date(settings.ultimaCopia)) / 864e5) : null;
+    const needBackup = nights.length >= 3 && (days == null || days >= 7);
+    $('backupNote').hidden = !needBackup;
+    $('backupNote').textContent = days == null
+      ? `Tienes ${nights.length} noches y ninguna copia. Si Safari borra los datos, se pierden: Datos → Descargar JSON.`
+      : `Tu última copia es de hace ${days} días. Datos → Descargar JSON.`;
+  }
+
+  // Comprueba una noche contra las metas del plan. null = falta el dato.
+  function planCheck(n) {
+    const c = n.calculado || {}, lev = n.percibido?.levantado;
+    const reg = lev ? Math.abs(diffClock(settings.levantar, lev)) : null;
+    const t = {
+      levantado: { v: lev || '—', ok: reg == null ? null : reg <= META.regularidad },
+      latencia: { v: c.latencia_real_min == null ? '—' : c.latencia_real_min + "'", ok: c.latencia_real_min == null ? null : c.latencia_real_min <= META.latencia },
+      eficiencia: { v: c.eficiencia_pct == null ? '—' : c.eficiencia_pct + '%', ok: c.eficiencia_pct == null ? null : c.eficiencia_pct >= META.eficiencia },
+      descanso: { v: n.preguntas?.descanso ?? '—', ok: n.preguntas?.descanso == null ? null : n.preguntas.descanso >= META.descanso },
+    };
+    t.todo = Object.values(t).every((x) => x.ok === true);
+    return t;
+  }
+  function renderPlan() {
+    const cama = fromMin(toMin(settings.levantar) - settings.horas * 60);
+    $('objLevantar').value = settings.levantar; $('objHoras').value = settings.horas;
+    $('objResumen').textContent = `Cama a las ${cama}, levantarte a las ${settings.levantar}.`;
+    if (!nights.length) { $('planSub').textContent = `Horario ${cama}–${settings.levantar}.`; $('plan').innerHTML = '<p class="empty">Aparece con tu primera noche.</p>'; return; }
+    let run = 0;
+    for (let i = 0; i < nights.length; i++) {
+      if (i > 0 && nights[i].fecha !== prevDay(nights[i - 1].fecha)) break;
+      if (!planCheck(nights[i]).todo) break;
+      run++;
+    }
+    $('planSub').textContent = `Horario ${cama}–${settings.levantar}. ${Math.min(run, META.noches)} de ${META.noches} noches seguidas cumpliendo todo` +
+      (run >= META.noches ? ': puedes probar el siguiente paso del plan.' : '.') +
+      ` Metas: levantarte ±${META.regularidad} min, latencia ≤${META.latencia} min, eficiencia ≥${META.eficiencia}%, descanso ≥${META.descanso}/5.`;
+    const mark = (x) => `<td class="${x.ok == null ? 'na' : x.ok ? 'ok' : 'no'}">${esc(x.v)}</td>`;
+    $('plan').innerHTML = `<div class="plan-wrap"><table class="plan-table"><thead><tr><th>Noche</th><th>Levantarte</th><th>Latencia</th><th>Eficiencia</th><th>Descanso</th></tr></thead><tbody>` +
+      nights.slice(0, 7).map((n) => { const t = planCheck(n); return `<tr><td>${esc(fechaCorta(n.fecha))}</td>${mark(t.levantado)}${mark(t.latencia)}${mark(t.eficiencia)}${mark(t.descanso)}</tr>`; }).join('') +
+      '</tbody></table></div>';
   }
 
   function nightCard(n, max) {
-    const f = n.reloj?.fases_min || {}, q = n.preguntas || {};
+    const f = n.reloj?.fases_min || {}, q = n.preguntas || {}, c = n.calculado || {};
     const segs = PHASES.map((p) => (f[p.k] ? `<i style="width:${(f[p.k] / max) * 100}%;background:${p.c}" title="${p.n}: ${fmt(f[p.k])}"></i>` : '')).join('');
     const chips = [
-      q.calidad != null && [`calidad ${q.calidad}/5`, ''],
-      q.ultima_cafeina && [`café ${q.ultima_cafeina}`, toMin(q.ultima_cafeina) >= 14 * 60 ? 'warn' : 'soft'],
+      c.avisos?.length && ['revisar datos', 'bad'],
+      c.eficiencia_pct != null && [`eficiencia ${c.eficiencia_pct}%`, c.eficiencia_pct >= META.eficiencia ? '' : 'warn'],
+      c.latencia_real_min != null && [`latencia ${c.latencia_real_min}'`, c.latencia_real_min <= META.latencia ? '' : 'warn'],
+      q.descanso != null && [`descanso ${q.descanso}/5`, ''],
+      q.ultima_cafeina && [`café ${q.ultima_cafeina}`, toMin(q.ultima_cafeina) >= 12 * 60 ? 'warn' : 'soft'],
       q.pantalla_ultima_hora === 'si' && ['pantalla', 'warn'],
       q.ejercicio && q.ejercicio !== 'no' && [`ejercicio ${q.ejercicio === 'manana' ? 'mañana' : q.ejercicio}`, 'soft'],
       q.estres >= 4 && ['estrés alto', 'warn'],
     ].filter(Boolean);
     return `<div class="night"><div class="night-top"><span class="night-date">${esc(fechaLarga(n.fecha))}</span>
-      <span class="night-meta">${esc(n.reloj?.dormido || '--:--')} → ${esc(n.reloj?.despertar || '--:--')} · ${fmt(n.calculado?.sueno_real_min)}</span></div>
+      <span class="night-meta">${esc(n.reloj?.dormido || '--:--')} → ${esc(n.reloj?.despertar || '--:--')} · ${fmt(c.sueno_real_min)}</span></div>
       <div class="bar">${segs}</div>
       <div class="night-foot"><div class="chips">${chips.map(([t, k]) => `<span class="chip ${k}">${esc(t)}</span>`).join('')}</div>
       <button class="link" data-edit="${esc(n.fecha)}">Editar</button></div></div>`;
@@ -202,51 +383,68 @@
       ? avgs.map((a) => `<div class="avg-row"><span>${a.n}</span><div class="avg-track"><i style="width:${((a.v || 0) / top) * 100}%;background:${a.c}"></i></div><span class="mono">${fmt(a.v)}</span></div>`).join('')
       : '<p class="empty">Las medias aparecen con tu primera noche.</p>';
   }
-  function renderAll() { renderStats(); renderLists(); }
+  function renderAll() { renderStats(); renderPlan(); renderLists(); }
+
+  $('objLevantar').addEventListener('change', (e) => { if (cTime(e.target.value)) { settings.levantar = e.target.value; saveSettings(); renderAll(); } });
+  $('objHoras').addEventListener('change', (e) => { const h = Number(e.target.value); if (h >= 6 && h <= 11) { settings.horas = h; saveSettings(); renderAll(); } });
 
   // ---------- exportar / importar ----------
   const sorted = () => [...nights].sort((a, b) => a.fecha.localeCompare(b.fecha));
   function exportJson() {
     return JSON.stringify({
       app: 'Diario de Sueño', version: 1, exportado: new Date().toISOString(),
-      unidades: { fases_min: 'minutos', horas: 'HH:MM local', error_hora_dormido_min: 'percibido menos real; positivo = crees que te dormiste más tarde' },
+      objetivo: { levantarse: settings.levantar, horas_en_cama: settings.horas, metas: META },
+      unidades: {
+        fases_min: 'minutos', horas: 'HH:MM local',
+        sueno_real_min: 'total de Salud si existe; si no, REM + ligero + profundo',
+        tiempo_en_cama_min: 'de «me metí en la cama» a «me levanté»',
+        eficiencia_pct: 'sueño real / tiempo en cama × 100',
+        latencia_real_min: 'de «me metí en la cama» a «me dormí» del reloj',
+        sueno_percibido_min: 'de «creo que me dormí» a «creo que me desperté», menos los minutos despierto que crees',
+        error_hora_dormido_min: 'percibido menos real; positivo = crees que te dormiste más tarde',
+        avisos: 'incoherencias detectadas al guardar',
+      },
       noches: sorted(),
     }, null, 2);
   }
   function exportCsv() {
-    const cols = ['fecha', 'cama', 'dormido_percibido', 'despertar_percibido', 'levantado', 'dormido_real', 'despertar_real', 'despierto_min', 'rem_min', 'ligero_min', 'profundo_min', 'sueno_real_min', 'sueno_percibido_min', 'latencia_percibida_min', 'error_hora_dormido_min', 'calidad', 'descanso', 'estres', 'despertares', 'siesta_min', 'ultima_cafeina', 'ultima_comida', 'pantalla_ultima_hora', 'ejercicio', 'luz_natural', 'suenos', 'notas'];
+    const cols = ['fecha', 'cama', 'dormido_percibido', 'despertar_percibido', 'levantado', 'dormido_real', 'despertar_real', 'total_dormido_salud_min', 'despierto_min', 'rem_min', 'ligero_min', 'profundo_min', 'sueno_real_min', 'tiempo_en_cama_min', 'eficiencia_pct', 'latencia_real_min', 'sueno_percibido_min', 'latencia_percibida_min', 'error_hora_dormido_min', 'error_hora_despertar_min', 'calidad', 'descanso', 'estres', 'despertares', 'despierto_noche_min', 'siesta_min', 'ultima_cafeina', 'ultima_comida', 'pantalla_ultima_hora', 'ejercicio', 'luz_natural', 'suenos', 'notas', 'avisos'];
     const rows = sorted().map((n) => {
       const p = n.percibido || {}, r = n.reloj || {}, f = r.fases_min || {}, q = n.preguntas || {}, c = n.calculado || {};
-      return [n.fecha, p.cama, p.dormido, p.despertar, p.levantado, r.dormido, r.despertar, f.despierto, f.rem, f.ligero, f.profundo, c.sueno_real_min, c.sueno_percibido_min, c.latencia_percibida_min, c.error_hora_dormido_min, q.calidad, q.descanso, q.estres, q.despertares, q.siesta_min, q.ultima_cafeina, q.ultima_comida, q.pantalla_ultima_hora, q.ejercicio, q.luz_natural, q.suenos, q.notas];
+      return [n.fecha, p.cama, p.dormido, p.despertar, p.levantado, r.dormido, r.despertar, r.total_dormido_min, f.despierto, f.rem, f.ligero, f.profundo, c.sueno_real_min, c.tiempo_en_cama_min, c.eficiencia_pct, c.latencia_real_min, c.sueno_percibido_min, c.latencia_percibida_min, c.error_hora_dormido_min, c.error_hora_despertar_min, q.calidad, q.descanso, q.estres, q.despertares, q.despierto_noche_min, q.siesta_min, q.ultima_cafeina, q.ultima_comida, q.pantalla_ultima_hora, q.ejercicio, q.luz_natural, q.suenos, q.notas, (c.avisos || []).join(' | ')];
     });
     const cell = (v) => (v == null ? '' : /[",\n;]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
     return '﻿' + [cols, ...rows].map((r) => r.map(cell).join(',')).join('\n');
   }
+  function markBackup() { settings.ultimaCopia = new Date().toISOString(); saveSettings(); renderStats(); }
   function download(name, text, type) {
     if (!nights.length) { toast('expToast', 'Todavía no hay noches que exportar.', 'err'); return; }
     const url = URL.createObjectURL(new Blob([text], { type }));
     const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     toast('expToast', `${name} descargado.`, 'ok');
+    if (type === 'application/json') markBackup();
   }
   $('dlJson').addEventListener('click', () => download(`sueno-${today()}.json`, exportJson(), 'application/json'));
   $('dlCsv').addEventListener('click', () => download(`sueno-${today()}.csv`, exportCsv(), 'text/csv'));
   $('copyJson').addEventListener('click', () => {
-    navigator.clipboard?.writeText(exportJson()).then(() => toast('expToast', 'JSON copiado.', 'ok'), () => toast('expToast', 'No se pudo copiar. Usa «Descargar JSON».', 'err'));
+    if (!nights.length) { toast('expToast', 'Todavía no hay noches que exportar.', 'err'); return; }
+    navigator.clipboard?.writeText(exportJson()).then(() => { toast('expToast', 'JSON copiado.', 'ok'); markBackup(); }, () => toast('expToast', 'No se pudo copiar. Usa «Descargar JSON».', 'err'));
   });
   $('importFile').addEventListener('change', async (e) => {
     const file = e.target.files[0]; e.target.value = ''; if (!file) return;
     try {
       const data = JSON.parse(await file.text());
-      const list = Array.isArray(data) ? data : data.noches;
+      const list = Array.isArray(data) ? data : data?.noches;
       if (!Array.isArray(list)) throw new Error('formato');
-      const valid = list.filter((n) => n && /^\d{4}-\d{2}-\d{2}$/.test(n.fecha) && n.reloj && n.preguntas);
+      const valid = list.filter(validNight).map(normalize);
+      const skipped = list.length - valid.length;
       const byDate = new Map(nights.map((n) => [n.fecha, n]));
-      valid.forEach((n) => { n.calculado = derive({ percibido: n.percibido || {}, reloj: { ...n.reloj, fases_min: n.reloj.fases_min || {} } }); byDate.set(n.fecha, n); });
+      valid.forEach((n) => byDate.set(n.fecha, n));
       nights = [...byDate.values()];
       if (!persist()) throw new Error('storage');
       renderAll();
-      toast('impToast', `${valid.length} ${valid.length === 1 ? 'noche importada' : 'noches importadas'}.`, 'ok');
+      toast('impToast', `${valid.length} ${valid.length === 1 ? 'noche importada' : 'noches importadas'}${skipped ? ` (${skipped} sin fecha válida, ignoradas)` : ''}.`, 'ok');
     } catch (err) {
       toast('impToast', err.message === 'storage' ? 'No se pudo guardar en este navegador.' : 'Ese archivo no es un JSON del Diario de Sueño.', 'err');
     }
@@ -262,7 +460,8 @@
 
   // ---------- arranque ----------
   $('fecha').value = today();
-  updateLive();
+  const draft = readKey(DRAFT_KEY, null);
+  if (validNight(draft?.night)) loadDraft(draft); else updateLive();
   renderAll();
   const start = location.hash.slice(1);
   go(screens.includes(start) ? start : 'hoy');

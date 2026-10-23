@@ -22,7 +22,7 @@
     <button class="nav-item" data-screen="historial"><span class="nav-glyph" aria-hidden="true">▤</span><span class="nav-label">Historial</span></button>
     <button class="nav-item" data-screen="datos"><span class="nav-glyph" aria-hidden="true">⇅</span><span class="nav-label">Datos</span></button>
     <div class="nav-level mono" id="navCount">0 noches</div>
-    <div class="nav-version mono">Diario de Sueño v1.0</div>
+    <div class="nav-version mono">Diario de Sueño v1.1</div>
   </nav>
 
   <main class="main">
@@ -38,6 +38,13 @@
           <button class="primary big" id="nowGo">▷ Registrar noche</button>
           <button class="secondary big" id="nowHist">Ver historial</button>
         </div>
+        <p class="backup-note" id="backupNote" hidden></p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Objetivos del plan</h3><button class="link" data-goto="datos">Cambiar horario →</button></div>
+        <p class="hint" id="planSub"></p>
+        <div id="plan"></div>
       </div>
 
       <div class="columns">
@@ -65,6 +72,7 @@
       <div class="panel">
         <span class="eyebrow">La noche</span>
         <label class="field"><span>Fecha al despertar</span><input type="date" id="fecha" required></label>
+        <p class="hint" id="draftNote" hidden></p>
       </div>
 
       <div class="panel">
@@ -80,14 +88,18 @@
 
       <div class="panel">
         <span class="eyebrow">Lo que dice el Apple Watch</span>
-        <p class="hint">App Salud → Sueño → la noche de hoy.</p>
+        <p class="hint">App Salud → Sueño → la noche de hoy. Puedes cambiar de app: lo que escribes se guarda como borrador.</p>
         <div class="grid2">
           <label class="field"><span>Me dormí (real)</span><input type="time" id="dormidoReal"></label>
           <label class="field"><span>Me desperté (real)</span><input type="time" id="despertarReal"></label>
         </div>
+        <div class="phase total"><span></span><span>Total dormido según Salud</span>
+          <input type="number" id="tot-h" min="0" max="16" inputmode="numeric" placeholder="0" aria-label="Total dormido, horas">
+          <input type="number" id="tot-m" min="0" max="59" inputmode="numeric" placeholder="0" aria-label="Total dormido, minutos"></div>
         <div class="phase-head"><span></span><span>Fase</span><span>Horas</span><span>Min</span></div>
         <div id="phases" class="phases"></div>
         <div class="live" id="live"></div>
+        <ul class="avisos" id="avisos" hidden></ul>
       </div>
 
       <div class="panel">
@@ -97,6 +109,7 @@
         <div class="q"><span class="q-label">Estrés al acostarte</span><span class="hint">1 = nada · 5 = mucho</span><div class="segmented" data-name="estres"></div></div>
         <div class="grid2">
           <label class="field"><span>Veces que te despertaste</span><input type="number" id="despertares" min="0" max="30" inputmode="numeric"></label>
+          <label class="field"><span>Minutos despierto en la noche</span><input type="number" id="despiertoNoche" min="0" max="600" inputmode="numeric"><small class="hint">Lo que crees, sumando todos los despertares.</small></label>
           <label class="field"><span>Siesta ayer (min)</span><input type="number" id="siesta" min="0" max="300" inputmode="numeric"></label>
           <label class="field"><span>Última cafeína</span><input type="time" id="cafeina"><small class="hint">Vacío si no tomaste.</small></label>
           <label class="field"><span>Última comida</span><input type="time" id="cena"></label>
@@ -111,6 +124,7 @@
       <div class="row sticky-actions">
         <button type="submit" class="primary big">✓ Guardar noche</button>
         <button type="button" class="ghost big" id="clearBtn">Vaciar</button>
+        <span id="delRow"></span>
         <span class="toast" id="toast" role="status"></span>
       </div>
     </form>
@@ -133,8 +147,17 @@
     <section class="screen" id="s-datos" hidden>
       <h1 class="screen-title">Datos</h1>
       <div class="panel">
+        <span class="eyebrow">Tu horario objetivo</span>
+        <p class="hint">Lo usa el panel «Objetivos del plan». Cámbialo en cada escalón del plan.</p>
+        <div class="grid2">
+          <label class="field"><span>Hora de levantarte</span><input type="time" id="objLevantar"></label>
+          <label class="field"><span>Horas en la cama</span><input type="number" id="objHoras" min="6" max="11" step="0.5" inputmode="decimal"></label>
+        </div>
+        <p class="hint" id="objResumen"></p>
+      </div>
+      <div class="panel">
         <span class="eyebrow">Exportar</span>
-        <p class="hint">JSON para que Claude lo analice. CSV para Excel o Google Sheets.</p>
+        <p class="hint">JSON para que Claude lo analice. CSV para Excel o Google Sheets. Descárgalo cada semana como copia de seguridad.</p>
         <div class="row">
           <button class="primary" id="dlJson">Descargar JSON</button>
           <button class="secondary" id="dlCsv">Descargar CSV</button>
