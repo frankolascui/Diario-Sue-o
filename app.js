@@ -33,6 +33,7 @@
   const cTime = (v) => (typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? v : null);
   const cNum = (v, max) => { const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v; return typeof n === 'number' && isFinite(n) && n >= 0 && n <= max ? Math.round(n) : null; };
   const cScale = (v) => { const n = cNum(v, 5); return n >= 1 ? n : null; };
+  const cKg = (v) => { const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v; return typeof n === 'number' && isFinite(n) && n >= 25 && n <= 250 ? Math.round(n * 10) / 10 : null; };
   const cOpt = (v, opts) => (opts.includes(v) ? v : null);
   function normalize(n) {
     const p = n.percibido || {}, w = n.reloj || {}, f = w.fases_min || {}, q = n.preguntas || {};
@@ -52,6 +53,8 @@
         notas: typeof q.notas === 'string' && q.notas.trim() ? q.notas.trim().slice(0, 2000) : null,
       },
     };
+    const b = n.cuerpo || {};
+    r.cuerpo = { peso_kg: cKg(b.peso_kg), mismas_condiciones: typeof b.mismas_condiciones === 'boolean' ? b.mismas_condiciones : null };
     if (typeof n.actualizado === 'string') r.actualizado = n.actualizado;
     r.calculado = derive(r);
     return r;
@@ -133,8 +136,19 @@
         luz_natural: $('luz').value || null, suenos: $('suenos').value || null, notas: $('notas').value.trim() || null,
       },
     };
+    r.cuerpo = { peso_kg: cKg($('peso').value.trim().replace(',', '.')), mismas_condiciones: $('pesoCond').value === '' ? null : $('pesoCond').value === 'si' };
     r.calculado = derive(r);
+    r.calculado.avisos.push(...weightAvisos(r));
     return r;
+  }
+  // El peso depende de otras noches, así que se comprueba aquí y no en derive().
+  function weightAvisos(r) {
+    const kg = r.cuerpo?.peso_kg, a = [];
+    if ($('peso').value !== '' && kg == null) a.push('El peso tiene que estar entre 25 y 250 kg (usa punto o coma para los decimales).');
+    const prev = kg == null ? null : nights.find((n) => n.fecha < r.fecha && n.cuerpo?.peso_kg != null);
+    if (prev && Math.abs(kg - prev.cuerpo.peso_kg) > 2) a.push(`El peso (${kg} kg) cambia más de 2 kg respecto al ${prev.fecha} (${prev.cuerpo.peso_kg} kg). ¿Es un error al escribirlo?`);
+    if (kg != null && r.cuerpo.mismas_condiciones === false) a.push('Pesaje en condiciones distintas: la app lo guarda, pero no lo usa para la tendencia.');
+    return a;
   }
 
   function derive(r) {
@@ -188,6 +202,7 @@
     clearForm(true);
     $('fecha').value = r.fecha || today();
     const p = r.percibido || {}, w = r.reloj || {}, q = r.preguntas || {};
+    $('peso').value = r.cuerpo?.peso_kg ?? ''; $('pesoCond').value = r.cuerpo?.mismas_condiciones == null ? '' : r.cuerpo.mismas_condiciones ? 'si' : 'no';
     $('cama').value = p.cama || ''; $('dormidoPerc').value = p.dormido || ''; $('despertarPerc').value = p.despertar || ''; $('levantado').value = p.levantado || '';
     $('dormidoReal').value = w.dormido || ''; $('despertarReal').value = w.despertar || '';
     setHm('tot-h', 'tot-m', w.total_dormido_min ?? null);
@@ -294,7 +309,7 @@
     const last = nights[0], week = nights.slice(0, 7), lc = last?.calculado || {};
     const d = avgOf(week, (n) => n.preguntas?.descanso);
     const dev = avgOf(week, (n) => (n.percibido?.cama ? Math.abs(diffClock(camaObjetivo(), n.percibido.cama)) : null));
-    const ent = trainingWeek(0);
+    const ent = trainingWeek(0), wt = weightTrend();
     const tiles = [
       { i: '☾', v: fmt(lc.sueno_real_min), l: `última noche (meta ${META.sueno / 60} h)`, bar: lc.sueno_real_min ? Math.min(100, (lc.sueno_real_min / META.sueno) * 100) : 0 },
       { i: '∑', v: fmt(avgOf(week, (n) => n.calculado?.sueno_real_min)), l: 'media (7 noches)' },
@@ -303,6 +318,7 @@
       { i: '★', v: d == null ? '—' : d.toFixed(1) + '/5', l: 'descanso (7 noches)', bar: d ? (d / 5) * 100 : 0 },
       { i: '⇆', v: dev == null ? '—' : `±${Math.round(dev)} min`, l: `hora de cama (meta ±${META.regularidad})` },
       { i: '⚡', v: `${ent.total}/${settings.entrenosPlan}`, l: `entrenos semana (meta ${settings.entrenosMin})`, bar: Math.min(100, (ent.total / settings.entrenosPlan) * 100) },
+      { i: '⚖', v: wt.media == null ? '—' : `${wt.media.toFixed(1)} kg`, l: wt.cambio == null ? 'peso (media 7 días)' : `peso 7 días · ${wt.cambio >= 0 ? '+' : ''}${wt.cambio.toFixed(1)} kg/sem` },
       { i: '🔥', v: String(streak()), l: 'días seguidos' },
     ];
     $('stats').innerHTML = tiles.map((t) => `<div class="stat"><span class="stat-icon" aria-hidden="true">${t.i}</span><div class="stat-body">
@@ -322,6 +338,16 @@
     $('backupNote').textContent = days == null
       ? `Tienes ${nights.length} noches y ninguna copia. Si Safari borra los datos, se pierden: Datos → Descargar JSON.`
       : `Tu última copia es de hace ${days} días. Datos → Descargar JSON.`;
+  }
+
+  // Tendencia de peso: media de los últimos 7 días frente a los 7 anteriores. Solo pesajes en condiciones de siempre,
+  // porque el peso de un día suelto varía por agua y comida y no dice nada.
+  function weightTrend() {
+    const ok = (n) => n.cuerpo?.peso_kg != null && n.cuerpo.mismas_condiciones !== false;
+    const back = (k) => { const d = new Date(today() + 'T12:00'); d.setDate(d.getDate() - k); return d.toISOString().slice(0, 10); };
+    const mean = (from, to) => avgOf(nights.filter((n) => ok(n) && n.fecha > from && n.fecha <= to), (n) => n.cuerpo.peso_kg);
+    const cur = mean(back(7), today()), prev = mean(back(14), back(7));
+    return { media: cur, cambio: cur != null && prev != null ? cur - prev : null };
   }
 
   // Entrenos de una semana (lunes a domingo). Cada noche guarda los entrenos del día anterior a su fecha.
@@ -391,6 +417,7 @@
       c.eficiencia_pct != null && [`eficiencia ${c.eficiencia_pct}%`, c.eficiencia_pct >= META.eficiencia ? '' : 'warn'],
       c.latencia_real_min != null && [`latencia ${c.latencia_real_min}'`, c.latencia_real_min <= META.latencia ? '' : 'warn'],
       q.descanso != null && [`descanso ${q.descanso}/5`, ''],
+      n.cuerpo?.peso_kg != null && [`${n.cuerpo.peso_kg} kg`, n.cuerpo.mismas_condiciones === false ? 'warn' : 'soft'],
       q.entrenos_ayer > 0 && [`${q.entrenos_ayer} ${q.entrenos_ayer === 1 ? 'entreno' : 'entrenos'}`, 'soft'],
       q.ultima_cafeina && [`café ${q.ultima_cafeina}`, toMin(q.ultima_cafeina) >= 12 * 60 ? 'warn' : 'soft'],
       q.pantalla_ultima_hora === 'si' && ['pantalla', 'warn'],
@@ -440,15 +467,16 @@
         error_hora_dormido_min: 'percibido menos real; positivo = crees que te dormiste más tarde',
         avisos: 'incoherencias detectadas al guardar',
         entrenos_ayer: 'entrenos del día anterior a la fecha de la noche',
+        cuerpo: 'peso_kg al levantarte; mismas_condiciones = misma hora, ropa y báscula, tras ir al baño y antes de comer',
       },
       noches: sorted(),
     }, null, 2);
   }
   function exportCsv() {
-    const cols = ['fecha', 'cama', 'dormido_percibido', 'despertar_percibido', 'levantado', 'dormido_real', 'despertar_real', 'total_dormido_salud_min', 'despierto_min', 'rem_min', 'ligero_min', 'profundo_min', 'sueno_real_min', 'tiempo_en_cama_min', 'eficiencia_pct', 'latencia_real_min', 'sueno_percibido_min', 'latencia_percibida_min', 'error_hora_dormido_min', 'error_hora_despertar_min', 'calidad', 'descanso', 'estres', 'entrenos_ayer', 'despertares', 'despierto_noche_min', 'siesta_min', 'ultima_cafeina', 'ultima_comida', 'pantalla_ultima_hora', 'ejercicio', 'luz_natural', 'suenos', 'notas', 'avisos'];
+    const cols = ['fecha', 'cama', 'dormido_percibido', 'despertar_percibido', 'levantado', 'dormido_real', 'despertar_real', 'total_dormido_salud_min', 'despierto_min', 'rem_min', 'ligero_min', 'profundo_min', 'sueno_real_min', 'tiempo_en_cama_min', 'eficiencia_pct', 'latencia_real_min', 'sueno_percibido_min', 'latencia_percibida_min', 'error_hora_dormido_min', 'error_hora_despertar_min', 'calidad', 'descanso', 'estres', 'entrenos_ayer', 'despertares', 'despierto_noche_min', 'siesta_min', 'ultima_cafeina', 'ultima_comida', 'pantalla_ultima_hora', 'ejercicio', 'luz_natural', 'suenos', 'notas', 'peso_kg', 'peso_mismas_condiciones', 'avisos'];
     const rows = sorted().map((n) => {
       const p = n.percibido || {}, r = n.reloj || {}, f = r.fases_min || {}, q = n.preguntas || {}, c = n.calculado || {};
-      return [n.fecha, p.cama, p.dormido, p.despertar, p.levantado, r.dormido, r.despertar, r.total_dormido_min, f.despierto, f.rem, f.ligero, f.profundo, c.sueno_real_min, c.tiempo_en_cama_min, c.eficiencia_pct, c.latencia_real_min, c.sueno_percibido_min, c.latencia_percibida_min, c.error_hora_dormido_min, c.error_hora_despertar_min, q.calidad, q.descanso, q.estres, q.entrenos_ayer, q.despertares, q.despierto_noche_min, q.siesta_min, q.ultima_cafeina, q.ultima_comida, q.pantalla_ultima_hora, q.ejercicio, q.luz_natural, q.suenos, q.notas, (c.avisos || []).join(' | ')];
+      return [n.fecha, p.cama, p.dormido, p.despertar, p.levantado, r.dormido, r.despertar, r.total_dormido_min, f.despierto, f.rem, f.ligero, f.profundo, c.sueno_real_min, c.tiempo_en_cama_min, c.eficiencia_pct, c.latencia_real_min, c.sueno_percibido_min, c.latencia_percibida_min, c.error_hora_dormido_min, c.error_hora_despertar_min, q.calidad, q.descanso, q.estres, q.entrenos_ayer, q.despertares, q.despierto_noche_min, q.siesta_min, q.ultima_cafeina, q.ultima_comida, q.pantalla_ultima_hora, q.ejercicio, q.luz_natural, q.suenos, q.notas, n.cuerpo?.peso_kg, n.cuerpo?.mismas_condiciones == null ? null : n.cuerpo.mismas_condiciones ? 'si' : 'no', (c.avisos || []).join(' | ')];
     });
     const cell = (v) => (v == null ? '' : /[",\n;]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
     return '﻿' + [cols, ...rows].map((r) => r.map(cell).join(',')).join('\n');
