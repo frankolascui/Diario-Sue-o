@@ -22,7 +22,7 @@
     <button class="nav-item" data-screen="historial"><span class="nav-glyph" aria-hidden="true">▤</span><span class="nav-label">Historial</span></button>
     <button class="nav-item" data-screen="datos"><span class="nav-glyph" aria-hidden="true">⇅</span><span class="nav-label">Datos</span></button>
     <div class="nav-level mono" id="navCount">0 noches</div>
-    <div class="nav-version mono">Diario de Sueño v1.1</div>
+    <div class="nav-version mono">Diario de Sueño v1.2</div>
   </nav>
 
   <main class="main">
@@ -45,6 +45,7 @@
         <div class="panel-head"><h3>Objetivos del plan</h3><button class="link" data-goto="datos">Cambiar horario →</button></div>
         <p class="hint" id="planSub"></p>
         <div id="plan"></div>
+        <p class="training" id="training"></p>
       </div>
 
       <div class="columns">
@@ -114,6 +115,7 @@
           <label class="field"><span>Última cafeína</span><input type="time" id="cafeina"><small class="hint">Vacío si no tomaste.</small></label>
           <label class="field"><span>Última comida</span><input type="time" id="cena"></label>
           <label class="field"><span>Pantalla en la última hora</span><select id="pantalla"><option value="">—</option><option value="no">No</option><option value="poco">Menos de 15 min</option><option value="si">Sí, bastante</option></select></label>
+          <label class="field"><span>Entrenos ayer</span><input type="number" id="entrenos" min="0" max="4" inputmode="numeric"><small class="hint">Pon 0 si no entrenaste.</small></label>
           <label class="field"><span>Ejercicio ayer</span><select id="ejercicio"><option value="">—</option><option value="no">No</option><option value="manana">Por la mañana</option><option value="tarde">Por la tarde</option><option value="noche">Por la noche</option></select></label>
           <label class="field"><span>Luz natural ayer</span><select id="luz"><option value="">—</option><option value="poca">Casi nada</option><option value="algo">Un rato</option><option value="mucha">Más de 1 h</option></select></label>
           <label class="field"><span>Sueños</span><select id="suenos"><option value="">—</option><option value="no">No recuerdo</option><option value="si">Sí</option><option value="pesadilla">Pesadilla</option></select></label>
@@ -154,6 +156,10 @@
           <label class="field"><span>Horas en la cama</span><input type="number" id="objHoras" min="6" max="11" step="0.5" inputmode="decimal"></label>
         </div>
         <p class="hint" id="objResumen"></p>
+        <div class="grid2">
+          <label class="field"><span>Entrenos planeados por semana</span><input type="number" id="objEntrenos" min="1" max="21" inputmode="numeric"></label>
+          <label class="field"><span>Mínimo para cumplir</span><input type="number" id="objEntrenosMin" min="1" max="21" inputmode="numeric"></label>
+        </div>
       </div>
       <div class="panel">
         <span class="eyebrow">Exportar</span>

@@ -16,7 +16,8 @@ Web para registrar cada noche lo que crees que dormiste, lo que dice el Apple Wa
 - **Eficiencia**: sueño real ÷ tiempo en la cama («me metí en la cama» → «me levanté»). Meta ≥85 %.
 - **Latencia**: de «me metí en la cama» a «me dormí» del reloj. Meta ≤30 min.
 - **Avisos**: si las fases no suman lo mismo que la ventana del reloj (±15 min), si el total de Salud no cuadra con las fases o si las horas están desordenadas. Al guardar con avisos hay que pulsar «Guardar» dos veces, y los avisos se exportan.
-- **Objetivos del plan** (pantalla Hoy): las últimas 7 noches contra las metas, con la hora objetivo de levantarte que pongas en Datos.
+- **Objetivos del plan** (pantalla Hoy): las últimas 7 noches contra las metas (hora de acostarte y de levantarte ±15 min, latencia, eficiencia, 8 h de sueño real y descanso), con el horario que pongas en Datos.
+- **Entrenos**: cada mañana apuntas los entrenos del día anterior. La app suma los de la semana (lunes a domingo) y los compara con los planeados y el mínimo que pongas en Datos.
 
 Lo que escribes en Registrar se guarda como borrador, así que puedes ir a la app Salud y volver sin perderlo.
 

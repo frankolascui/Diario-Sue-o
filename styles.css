@@ -94,7 +94,7 @@ p { margin: 0; }
 form.screen { max-width: 820px; }
 
 /* Estadísticas */
-.stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .stat {
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
   padding: 14px 16px; display: flex; align-items: center; gap: 12px; min-width: 0;
@@ -184,7 +184,7 @@ textarea { resize: vertical; line-height: 1.5; }
 .file-btn { position: relative; align-self: flex-start; cursor: pointer; }
 .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 
-@media (max-width: 1100px) { .stats { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 1100px) { .stats { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 900px) { .columns { grid-template-columns: 1fr; } }
 @media (max-width: 760px) {
   body { font-size: 16px; }
@@ -211,12 +211,16 @@ textarea { resize: vertical; line-height: 1.5; }
   background: color-mix(in srgb, #fbbf24 10%, transparent); border: 1px solid color-mix(in srgb, #fbbf24 45%, var(--line)); color: #fde68a; font-size: 15px; }
 .chip.bad { color: #fbbf24; }
 .backup-note { color: #fde68a; font-size: 15px; }
-.plan-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-.plan-table th { font-family: var(--mono); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); font-weight: 500; text-align: right; padding: 0 6px 8px; }
+.plan-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.plan-table th { font-family: var(--mono); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); font-weight: 500; text-align: right; padding: 0 4px 8px; }
 .plan-table th:first-child, .plan-table td:first-child { text-align: left; padding-left: 0; }
-.plan-table td { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; padding: 7px 6px; border-top: 1px solid var(--line); white-space: nowrap; }
+.plan-table td { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; padding: 7px 4px; border-top: 1px solid var(--line); white-space: nowrap; }
 .plan-table td:first-child { font-family: var(--body); }
 .plan-table .ok { color: var(--ok); }
 .plan-table .no { color: var(--danger); }
 .plan-table .na { color: var(--muted); }
 .plan-wrap { overflow-x: auto; }
+.training { font-size: 15px; color: var(--muted); }
+.training b { color: var(--fg); font-weight: 500; }
+.training .ok { color: var(--ok); }
+.training .no { color: var(--danger); }

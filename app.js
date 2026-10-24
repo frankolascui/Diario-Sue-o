@@ -10,8 +10,9 @@
     { k: 'ligero', n: 'Ligero', c: 'var(--core)' },
     { k: 'profundo', n: 'Profundo', c: 'var(--deep)' },
   ];
-  // Metas del plan de sueño: latencia ≤30 min (regla de escalón), eficiencia ≥85 %, descanso ≥4/5, levantarse ±15 min.
-  const META = { latencia: 30, eficiencia: 85, descanso: 4, regularidad: 15, noches: 7 };
+  // Metas del plan de sueño: latencia ≤30 min (regla de escalón), eficiencia ≥85 %, descanso ≥4/5,
+  // acostarse y levantarse ±15 min de la hora objetivo y 8 h de sueño real.
+  const META = { latencia: 30, eficiencia: 85, descanso: 4, regularidad: 15, sueno: 480, noches: 7 };
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -25,6 +26,7 @@
   const num = (v) => (v === '' || v == null ? null : Number(v));
   const fechaLarga = (f) => { try { return new Date(f + 'T12:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' }); } catch { return f; } };
   const fechaCorta = (f) => { try { return new Date(f + 'T12:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric' }); } catch { return f; } };
+  const nextDay = (f) => { const d = new Date(f + 'T12:00'); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); };
   const prevDay = (f) => { const d = new Date(f + 'T12:00'); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); };
 
   // ---------- limpieza de datos (importación y versiones antiguas) ----------
@@ -43,7 +45,7 @@
       },
       preguntas: {
         calidad: cScale(q.calidad), descanso: cScale(q.descanso), estres: cScale(q.estres),
-        despertares: cNum(q.despertares, 30), despierto_noche_min: cNum(q.despierto_noche_min, 600), siesta_min: cNum(q.siesta_min, 300),
+        entrenos_ayer: cNum(q.entrenos_ayer, 4), despertares: cNum(q.despertares, 30), despierto_noche_min: cNum(q.despierto_noche_min, 600), siesta_min: cNum(q.siesta_min, 300),
         ultima_cafeina: cTime(q.ultima_cafeina), ultima_comida: cTime(q.ultima_comida),
         pantalla_ultima_hora: cOpt(q.pantalla_ultima_hora, ['no', 'poco', 'si']), ejercicio: cOpt(q.ejercicio, ['no', 'manana', 'tarde', 'noche']),
         luz_natural: cOpt(q.luz_natural, ['poca', 'algo', 'mucha']), suenos: cOpt(q.suenos, ['no', 'si', 'pesadilla']),
@@ -68,7 +70,8 @@
     nights.sort((a, b) => b.fecha.localeCompare(a.fecha));
     return writeKey(KEY, nights);
   }
-  let settings = { levantar: '06:00', horas: 9, ultimaCopia: null, ...readKey(SET_KEY, {}) };
+  let settings = { levantar: '06:00', horas: 9, entrenosPlan: 8, entrenosMin: 7, ultimaCopia: null, ...readKey(SET_KEY, {}) };
+  const camaObjetivo = () => fromMin(toMin(settings.levantar) - settings.horas * 60);
   const saveSettings = () => writeKey(SET_KEY, settings);
   // Pide a Safari que no borre los datos por falta de uso (las webs añadidas a la pantalla de inicio ya están exentas).
   try { navigator.storage?.persist?.(); } catch {}
@@ -124,7 +127,7 @@
       reloj: { dormido: $('dormidoReal').value || null, despertar: $('despertarReal').value || null, total_dormido_min: hm('tot-h', 'tot-m'), fases_min: fases },
       preguntas: {
         calidad: scales.calidad, descanso: scales.descanso, estres: scales.estres,
-        despertares: num($('despertares').value), despierto_noche_min: num($('despiertoNoche').value), siesta_min: num($('siesta').value),
+        entrenos_ayer: num($('entrenos').value), despertares: num($('despertares').value), despierto_noche_min: num($('despiertoNoche').value), siesta_min: num($('siesta').value),
         ultima_cafeina: $('cafeina').value || null, ultima_comida: $('cena').value || null,
         pantalla_ultima_hora: $('pantalla').value || null, ejercicio: $('ejercicio').value || null,
         luz_natural: $('luz').value || null, suenos: $('suenos').value || null, notas: $('notas').value.trim() || null,
@@ -190,7 +193,7 @@
     setHm('tot-h', 'tot-m', w.total_dormido_min ?? null);
     PHASES.forEach((ph) => setHm(`ph-${ph.k}-h`, `ph-${ph.k}-m`, w.fases_min?.[ph.k] ?? null));
     ['calidad', 'descanso', 'estres'].forEach((n) => { scales[n] = q[n] ?? null; paintScale(n); });
-    $('despertares').value = q.despertares ?? ''; $('despiertoNoche').value = q.despierto_noche_min ?? ''; $('siesta').value = q.siesta_min ?? '';
+    $('entrenos').value = q.entrenos_ayer ?? ''; $('despertares').value = q.despertares ?? ''; $('despiertoNoche').value = q.despierto_noche_min ?? ''; $('siesta').value = q.siesta_min ?? '';
     $('cafeina').value = q.ultima_cafeina || ''; $('cena').value = q.ultima_comida || '';
     $('pantalla').value = q.pantalla_ultima_hora || ''; $('ejercicio').value = q.ejercicio || '';
     $('luz').value = q.luz_natural || ''; $('suenos').value = q.suenos || ''; $('notas').value = q.notas || '';
@@ -290,12 +293,16 @@
   function renderStats() {
     const last = nights[0], week = nights.slice(0, 7), lc = last?.calculado || {};
     const d = avgOf(week, (n) => n.preguntas?.descanso);
+    const dev = avgOf(week, (n) => (n.percibido?.cama ? Math.abs(diffClock(camaObjetivo(), n.percibido.cama)) : null));
+    const ent = trainingWeek(0);
     const tiles = [
-      { i: '☾', v: fmt(lc.sueno_real_min), l: 'última noche', bar: lc.sueno_real_min ? Math.min(100, (lc.sueno_real_min / 540) * 100) : 0 },
+      { i: '☾', v: fmt(lc.sueno_real_min), l: `última noche (meta ${META.sueno / 60} h)`, bar: lc.sueno_real_min ? Math.min(100, (lc.sueno_real_min / META.sueno) * 100) : 0 },
+      { i: '∑', v: fmt(avgOf(week, (n) => n.calculado?.sueno_real_min)), l: 'media (7 noches)' },
       { i: '◎', v: lc.eficiencia_pct == null ? '—' : lc.eficiencia_pct + '%', l: `eficiencia (≥${META.eficiencia}%)`, bar: lc.eficiencia_pct == null ? 0 : Math.min(100, lc.eficiencia_pct) },
       { i: '⏱', v: lc.latencia_real_min == null ? '—' : lc.latencia_real_min + ' min', l: `latencia (≤${META.latencia})` },
       { i: '★', v: d == null ? '—' : d.toFixed(1) + '/5', l: 'descanso (7 noches)', bar: d ? (d / 5) * 100 : 0 },
-      { i: '∑', v: fmt(avgOf(week, (n) => n.calculado?.sueno_real_min)), l: 'media (7 noches)' },
+      { i: '⇆', v: dev == null ? '—' : `±${Math.round(dev)} min`, l: `hora de cama (meta ±${META.regularidad})` },
+      { i: '⚡', v: `${ent.total}/${settings.entrenosPlan}`, l: `entrenos semana (meta ${settings.entrenosMin})`, bar: Math.min(100, (ent.total / settings.entrenosPlan) * 100) },
       { i: '🔥', v: String(streak()), l: 'días seguidos' },
     ];
     $('stats').innerHTML = tiles.map((t) => `<div class="stat"><span class="stat-icon" aria-hidden="true">${t.i}</span><div class="stat-body">
@@ -317,22 +324,48 @@
       : `Tu última copia es de hace ${days} días. Datos → Descargar JSON.`;
   }
 
+  // Entrenos de una semana (lunes a domingo). Cada noche guarda los entrenos del día anterior a su fecha.
+  // offset 0 = esta semana, -1 = la pasada.
+  function trainingWeek(offset) {
+    const d = new Date(today() + 'T12:00');
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + offset * 7);
+    const start = d.toISOString().slice(0, 10);
+    d.setDate(d.getDate() + 6);
+    const end = d.toISOString().slice(0, 10), hoy = today();
+    let total = 0, dias = 0, sinDato = 0;
+    const byDay = new Map(nights.map((n) => [prevDay(n.fecha), n.preguntas?.entrenos_ayer]));
+    for (let x = start; x <= end && x < hoy; x = nextDay(x)) {
+      dias++;
+      const v = byDay.get(x);
+      if (v == null) sinDato++; else total += v;
+    }
+    return { total, dias, sinDato };
+  }
+
   // Comprueba una noche contra las metas del plan. null = falta el dato.
   function planCheck(n) {
     const c = n.calculado || {}, lev = n.percibido?.levantado;
     const reg = lev ? Math.abs(diffClock(settings.levantar, lev)) : null;
+    const cama = n.percibido?.cama, regC = cama ? Math.abs(diffClock(camaObjetivo(), cama)) : null;
     const t = {
+      cama: { v: cama || '—', ok: regC == null ? null : regC <= META.regularidad },
       levantado: { v: lev || '—', ok: reg == null ? null : reg <= META.regularidad },
       latencia: { v: c.latencia_real_min == null ? '—' : c.latencia_real_min + "'", ok: c.latencia_real_min == null ? null : c.latencia_real_min <= META.latencia },
       eficiencia: { v: c.eficiencia_pct == null ? '—' : c.eficiencia_pct + '%', ok: c.eficiencia_pct == null ? null : c.eficiencia_pct >= META.eficiencia },
+      sueno: { v: c.sueno_real_min == null ? '—' : `${Math.floor(c.sueno_real_min / 60)}:${String(c.sueno_real_min % 60).padStart(2, '0')}`, ok: c.sueno_real_min == null ? null : c.sueno_real_min >= META.sueno },
       descanso: { v: n.preguntas?.descanso ?? '—', ok: n.preguntas?.descanso == null ? null : n.preguntas.descanso >= META.descanso },
     };
     t.todo = Object.values(t).every((x) => x.ok === true);
     return t;
   }
   function renderPlan() {
-    const cama = fromMin(toMin(settings.levantar) - settings.horas * 60);
+    const cama = camaObjetivo();
     $('objLevantar').value = settings.levantar; $('objHoras').value = settings.horas;
+    $('objEntrenos').value = settings.entrenosPlan; $('objEntrenosMin').value = settings.entrenosMin;
+    const w0 = trainingWeek(0), w1 = trainingWeek(-1);
+    const miss = (w) => (w.sinDato ? ` (${w.sinDato} ${w.sinDato === 1 ? 'día' : 'días'} sin apuntar)` : '');
+    $('training').innerHTML = `<b>Entrenos:</b> esta semana ${w0.total} de ${settings.entrenosPlan}${esc(miss(w0))}; la pasada ${w1.total}${esc(miss(w1))}` +
+      ` <span class="${w1.total >= settings.entrenosMin ? 'ok' : 'no'}">${w1.total >= settings.entrenosMin ? '✓ meta cumplida' : w1.dias && !w1.sinDato ? '✗ por debajo de ' + settings.entrenosMin : ''}</span>`;
     $('objResumen').textContent = `Cama a las ${cama}, levantarte a las ${settings.levantar}.`;
     if (!nights.length) { $('planSub').textContent = `Horario ${cama}–${settings.levantar}.`; $('plan').innerHTML = '<p class="empty">Aparece con tu primera noche.</p>'; return; }
     let run = 0;
@@ -343,10 +376,10 @@
     }
     $('planSub').textContent = `Horario ${cama}–${settings.levantar}. ${Math.min(run, META.noches)} de ${META.noches} noches seguidas cumpliendo todo` +
       (run >= META.noches ? ': puedes probar el siguiente paso del plan.' : '.') +
-      ` Metas: levantarte ±${META.regularidad} min, latencia ≤${META.latencia} min, eficiencia ≥${META.eficiencia}%, descanso ≥${META.descanso}/5.`;
+      ` Metas: acostarte y levantarte ±${META.regularidad} min, latencia ≤${META.latencia} min, eficiencia ≥${META.eficiencia}%, sueño ≥${META.sueno / 60} h, descanso ≥${META.descanso}/5.`;
     const mark = (x) => `<td class="${x.ok == null ? 'na' : x.ok ? 'ok' : 'no'}">${esc(x.v)}</td>`;
-    $('plan').innerHTML = `<div class="plan-wrap"><table class="plan-table"><thead><tr><th>Noche</th><th>Levantarte</th><th>Latencia</th><th>Eficiencia</th><th>Descanso</th></tr></thead><tbody>` +
-      nights.slice(0, 7).map((n) => { const t = planCheck(n); return `<tr><td>${esc(fechaCorta(n.fecha))}</td>${mark(t.levantado)}${mark(t.latencia)}${mark(t.eficiencia)}${mark(t.descanso)}</tr>`; }).join('') +
+    $('plan').innerHTML = `<div class="plan-wrap"><table class="plan-table"><thead><tr><th>Noche</th><th>Cama</th><th>Levant.</th><th>Lat.</th><th>Efic.</th><th>Sueño</th><th>Desc.</th></tr></thead><tbody>` +
+      nights.slice(0, 7).map((n) => { const t = planCheck(n); return `<tr><td>${esc(fechaCorta(n.fecha))}</td>${mark(t.cama)}${mark(t.levantado)}${mark(t.latencia)}${mark(t.eficiencia)}${mark(t.sueno)}${mark(t.descanso)}</tr>`; }).join('') +
       '</tbody></table></div>';
   }
 
@@ -358,6 +391,7 @@
       c.eficiencia_pct != null && [`eficiencia ${c.eficiencia_pct}%`, c.eficiencia_pct >= META.eficiencia ? '' : 'warn'],
       c.latencia_real_min != null && [`latencia ${c.latencia_real_min}'`, c.latencia_real_min <= META.latencia ? '' : 'warn'],
       q.descanso != null && [`descanso ${q.descanso}/5`, ''],
+      q.entrenos_ayer > 0 && [`${q.entrenos_ayer} ${q.entrenos_ayer === 1 ? 'entreno' : 'entrenos'}`, 'soft'],
       q.ultima_cafeina && [`café ${q.ultima_cafeina}`, toMin(q.ultima_cafeina) >= 12 * 60 ? 'warn' : 'soft'],
       q.pantalla_ultima_hora === 'si' && ['pantalla', 'warn'],
       q.ejercicio && q.ejercicio !== 'no' && [`ejercicio ${q.ejercicio === 'manana' ? 'mañana' : q.ejercicio}`, 'soft'],
@@ -386,6 +420,8 @@
   function renderAll() { renderStats(); renderPlan(); renderLists(); }
 
   $('objLevantar').addEventListener('change', (e) => { if (cTime(e.target.value)) { settings.levantar = e.target.value; saveSettings(); renderAll(); } });
+  const intSetting = (id, key, lo, hi) => $(id).addEventListener('change', (e) => { const v = Number(e.target.value); if (Number.isInteger(v) && v >= lo && v <= hi) { settings[key] = v; saveSettings(); renderAll(); } });
+  intSetting('objEntrenos', 'entrenosPlan', 1, 21); intSetting('objEntrenosMin', 'entrenosMin', 1, 21);
   $('objHoras').addEventListener('change', (e) => { const h = Number(e.target.value); if (h >= 6 && h <= 11) { settings.horas = h; saveSettings(); renderAll(); } });
 
   // ---------- exportar / importar ----------
@@ -393,7 +429,7 @@
   function exportJson() {
     return JSON.stringify({
       app: 'Diario de Sueño', version: 1, exportado: new Date().toISOString(),
-      objetivo: { levantarse: settings.levantar, horas_en_cama: settings.horas, metas: META },
+      objetivo: { acostarse: camaObjetivo(), levantarse: settings.levantar, horas_en_cama: settings.horas, entrenos_semana: settings.entrenosPlan, entrenos_minimo: settings.entrenosMin, metas: META },
       unidades: {
         fases_min: 'minutos', horas: 'HH:MM local',
         sueno_real_min: 'total de Salud si existe; si no, REM + ligero + profundo',
@@ -403,15 +439,16 @@
         sueno_percibido_min: 'de «creo que me dormí» a «creo que me desperté», menos los minutos despierto que crees',
         error_hora_dormido_min: 'percibido menos real; positivo = crees que te dormiste más tarde',
         avisos: 'incoherencias detectadas al guardar',
+        entrenos_ayer: 'entrenos del día anterior a la fecha de la noche',
       },
       noches: sorted(),
     }, null, 2);
   }
   function exportCsv() {
-    const cols = ['fecha', 'cama', 'dormido_percibido', 'despertar_percibido', 'levantado', 'dormido_real', 'despertar_real', 'total_dormido_salud_min', 'despierto_min', 'rem_min', 'ligero_min', 'profundo_min', 'sueno_real_min', 'tiempo_en_cama_min', 'eficiencia_pct', 'latencia_real_min', 'sueno_percibido_min', 'latencia_percibida_min', 'error_hora_dormido_min', 'error_hora_despertar_min', 'calidad', 'descanso', 'estres', 'despertares', 'despierto_noche_min', 'siesta_min', 'ultima_cafeina', 'ultima_comida', 'pantalla_ultima_hora', 'ejercicio', 'luz_natural', 'suenos', 'notas', 'avisos'];
+    const cols = ['fecha', 'cama', 'dormido_percibido', 'despertar_percibido', 'levantado', 'dormido_real', 'despertar_real', 'total_dormido_salud_min', 'despierto_min', 'rem_min', 'ligero_min', 'profundo_min', 'sueno_real_min', 'tiempo_en_cama_min', 'eficiencia_pct', 'latencia_real_min', 'sueno_percibido_min', 'latencia_percibida_min', 'error_hora_dormido_min', 'error_hora_despertar_min', 'calidad', 'descanso', 'estres', 'entrenos_ayer', 'despertares', 'despierto_noche_min', 'siesta_min', 'ultima_cafeina', 'ultima_comida', 'pantalla_ultima_hora', 'ejercicio', 'luz_natural', 'suenos', 'notas', 'avisos'];
     const rows = sorted().map((n) => {
       const p = n.percibido || {}, r = n.reloj || {}, f = r.fases_min || {}, q = n.preguntas || {}, c = n.calculado || {};
-      return [n.fecha, p.cama, p.dormido, p.despertar, p.levantado, r.dormido, r.despertar, r.total_dormido_min, f.despierto, f.rem, f.ligero, f.profundo, c.sueno_real_min, c.tiempo_en_cama_min, c.eficiencia_pct, c.latencia_real_min, c.sueno_percibido_min, c.latencia_percibida_min, c.error_hora_dormido_min, c.error_hora_despertar_min, q.calidad, q.descanso, q.estres, q.despertares, q.despierto_noche_min, q.siesta_min, q.ultima_cafeina, q.ultima_comida, q.pantalla_ultima_hora, q.ejercicio, q.luz_natural, q.suenos, q.notas, (c.avisos || []).join(' | ')];
+      return [n.fecha, p.cama, p.dormido, p.despertar, p.levantado, r.dormido, r.despertar, r.total_dormido_min, f.despierto, f.rem, f.ligero, f.profundo, c.sueno_real_min, c.tiempo_en_cama_min, c.eficiencia_pct, c.latencia_real_min, c.sueno_percibido_min, c.latencia_percibida_min, c.error_hora_dormido_min, c.error_hora_despertar_min, q.calidad, q.descanso, q.estres, q.entrenos_ayer, q.despertares, q.despierto_noche_min, q.siesta_min, q.ultima_cafeina, q.ultima_comida, q.pantalla_ultima_hora, q.ejercicio, q.luz_natural, q.suenos, q.notas, (c.avisos || []).join(' | ')];
     });
     const cell = (v) => (v == null ? '' : /[",\n;]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
     return '﻿' + [cols, ...rows].map((r) => r.map(cell).join(',')).join('\n');
