@@ -8,7 +8,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Sueño">
   <title>Diario de Sueño</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23000'/%3E%3Cpath d='M21 6a10 10 0 1 0 5 15A8 8 0 0 1 21 6z' fill='%235eead4'/%3E%3C/svg%3E">
+  <link rel="icon" href="icon.png">
+  <link rel="apple-touch-icon" href="icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Alegreya+Sans:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
   <link rel="stylesheet" href="styles.css">
@@ -16,18 +17,55 @@
 <body>
 <div class="app">
   <nav class="nav" aria-label="Secciones">
-    <div class="nav-brand">Sueño</div>
+    <div class="nav-brand"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+      <defs>
+        <linearGradient id="lg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#2563eb"/><stop offset=".55" stop-color="#38bdf8"/><stop offset="1" stop-color="#5eead4"/></linearGradient>
+        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      </defs>
+      <g fill="none" stroke="url(#lg)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)">
+        <path class="chev c3" d="M16 58 L32 42 L48 58" opacity=".55"/>
+        <path class="chev c2" d="M19 44 L32 31 L45 44" opacity=".78"/>
+        <path class="chev c1" d="M22 30 L32 20 L42 30"/>
+      </g>
+      <path class="moon" d="M33.5 2.5a6.5 6.5 0 1 0 5 10.6 5.2 5.2 0 0 1-5-10.6z" fill="#e0fdfa" filter="url(#glow)"/>
+    </svg><span>Sueño</span></div>
     <button class="nav-item on" data-screen="hoy"><span class="nav-glyph" aria-hidden="true">☾</span><span class="nav-label">Hoy</span></button>
     <button class="nav-item" data-screen="registrar"><span class="nav-glyph" aria-hidden="true">✎</span><span class="nav-label">Registrar</span></button>
     <button class="nav-item" data-screen="historial"><span class="nav-glyph" aria-hidden="true">▤</span><span class="nav-label">Historial</span></button>
     <button class="nav-item" data-screen="datos"><span class="nav-glyph" aria-hidden="true">⇅</span><span class="nav-label">Datos</span></button>
     <div class="nav-level mono" id="navCount">0 noches</div>
-    <div class="nav-version mono">Diario de Sueño v1.2</div>
+    <div class="nav-version mono">Diario de Sueño v1.3</div>
   </nav>
 
   <main class="main">
+    <header class="m-head" aria-hidden="true"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+      <defs>
+        <linearGradient id="lg2" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#2563eb"/><stop offset=".55" stop-color="#38bdf8"/><stop offset="1" stop-color="#5eead4"/></linearGradient>
+        <filter id="glow2" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      </defs>
+      <g fill="none" stroke="url(#lg2)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow2)">
+        <path class="chev c3" d="M16 58 L32 42 L48 58" opacity=".55"/>
+        <path class="chev c2" d="M19 44 L32 31 L45 44" opacity=".78"/>
+        <path class="chev c1" d="M22 30 L32 20 L42 30"/>
+      </g>
+      <path class="moon" d="M33.5 2.5a6.5 6.5 0 1 0 5 10.6 5.2 5.2 0 0 1-5-10.6z" fill="#e0fdfa" filter="url(#glow2)"/>
+    </svg><span>Sueño</span></header>
     <!-- HOY -->
     <section class="screen" id="s-hoy">
+      <div class="clock">
+        <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+          <defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5eead4"/><stop offset="1" stop-color="#6d3df5"/></linearGradient></defs>
+          <circle cx="60" cy="60" r="52" class="ring-bg"/>
+          <circle cx="60" cy="60" r="52" class="ring-fg" id="ringFg"/>
+        </svg>
+        <div class="ring-center"><b id="countdown">—</b><small id="countLabel">para acostarte</small></div>
+        <div class="clock-side">
+          <span class="clock-time mono" id="clockTime">--:--</span>
+          <span class="clock-sched" id="clockSched"></span>
+          <p class="clock-tip" id="clockTip"></p>
+        </div>
+      </div>
+
       <div class="stats" id="stats"></div>
 
       <div class="now">
@@ -54,14 +92,9 @@
           <div id="recent" class="list"></div>
         </div>
         <div class="panel">
-          <div class="panel-head"><h3>Media de 7 noches</h3></div>
-          <div id="phaseAvg"></div>
-          <div class="legend">
-            <span><i style="background:var(--awake)"></i>Despierto</span>
-            <span><i style="background:var(--rem)"></i>REM</span>
-            <span><i style="background:var(--core)"></i>Ligero</span>
-            <span><i style="background:var(--deep)"></i>Profundo</span>
-          </div>
+          <div class="panel-head"><h3>Sueño de 14 días</h3></div>
+          <div id="chart" class="chart"></div>
+          <p class="hint">La línea marca tu meta de 8 h de sueño real.</p>
         </div>
       </div>
     </section>

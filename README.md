@@ -22,6 +22,9 @@ Web para registrar cada noche lo que crees que dormiste, lo que dice el Apple Wa
 
 Lo que escribes en Registrar se guarda como borrador, así que puedes ir a la app Salud y volver sin perderlo.
 
+- **Reloj** (pantalla Hoy): la hora, un anillo con lo que falta para acostarte (o para levantarte, de noche) y el consejo del plan que toca a esa hora.
+- **Gráfico de 14 días**: sueño real de cada noche con la meta de 8 h.
+
 ## Dónde se guardan los datos
 
 En el `localStorage` del navegador donde la uses. No hay servidor ni cuenta:
@@ -44,3 +47,4 @@ Es un sitio estático (HTML, CSS y JS), sin compilación.
 - `index.html`: estructura de las pantallas (Hoy, Registrar, Historial, Datos).
 - `styles.css`: estilo.
 - `app.js`: lógica, cálculos, almacenamiento y exportación.
+- `icon.png`: icono para la pantalla de inicio del iPhone (el mismo logo que en la app).

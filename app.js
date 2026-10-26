@@ -297,12 +297,6 @@
   function toast(id, msg, kind) { const t = $(id); t.textContent = msg; t.className = 'toast ' + (kind || ''); }
 
   // ---------- render ----------
-  function streak() {
-    const set = new Set(nights.map((n) => n.fecha));
-    let d = set.has(today()) ? today() : prevDay(today()), s = 0;
-    while (set.has(d)) { s++; d = prevDay(d); }
-    return s;
-  }
   const avgOf = (arr, fn) => { const v = arr.map(fn).filter((x) => x != null && !isNaN(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
 
   function renderStats() {
@@ -310,16 +304,14 @@
     const d = avgOf(week, (n) => n.preguntas?.descanso);
     const dev = avgOf(week, (n) => (n.percibido?.cama ? Math.abs(diffClock(camaObjetivo(), n.percibido.cama)) : null));
     const ent = trainingWeek(0), wt = weightTrend();
+    // Seis tarjetas, una por meta. La media de sueño está en el gráfico y la latencia en la tabla del plan.
     const tiles = [
       { i: '☾', v: fmt(lc.sueno_real_min), l: `última noche (meta ${META.sueno / 60} h)`, bar: lc.sueno_real_min ? Math.min(100, (lc.sueno_real_min / META.sueno) * 100) : 0 },
-      { i: '∑', v: fmt(avgOf(week, (n) => n.calculado?.sueno_real_min)), l: 'media (7 noches)' },
-      { i: '◎', v: lc.eficiencia_pct == null ? '—' : lc.eficiencia_pct + '%', l: `eficiencia (≥${META.eficiencia}%)`, bar: lc.eficiencia_pct == null ? 0 : Math.min(100, lc.eficiencia_pct) },
-      { i: '⏱', v: lc.latencia_real_min == null ? '—' : lc.latencia_real_min + ' min', l: `latencia (≤${META.latencia})` },
       { i: '★', v: d == null ? '—' : d.toFixed(1) + '/5', l: 'descanso (7 noches)', bar: d ? (d / 5) * 100 : 0 },
       { i: '⇆', v: dev == null ? '—' : `±${Math.round(dev)} min`, l: `hora de cama (meta ±${META.regularidad})` },
+      { i: '◎', v: lc.eficiencia_pct == null ? '—' : lc.eficiencia_pct + '%', l: `eficiencia (≥${META.eficiencia}%)`, bar: lc.eficiencia_pct == null ? 0 : Math.min(100, lc.eficiencia_pct) },
       { i: '⚡', v: `${ent.total}/${settings.entrenosPlan}`, l: `entrenos semana (meta ${settings.entrenosMin})`, bar: Math.min(100, (ent.total / settings.entrenosPlan) * 100) },
       { i: '⚖', v: wt.media == null ? '—' : `${wt.media.toFixed(1)} kg`, l: wt.cambio == null ? 'peso (media 7 días)' : `peso 7 días · ${wt.cambio >= 0 ? '+' : ''}${wt.cambio.toFixed(1)} kg/sem` },
-      { i: '🔥', v: String(streak()), l: 'días seguidos' },
     ];
     $('stats').innerHTML = tiles.map((t) => `<div class="stat"><span class="stat-icon" aria-hidden="true">${t.i}</span><div class="stat-body">
       <span class="stat-value">${esc(t.v)}</span><span class="stat-label">${t.l}</span>${t.bar != null ? `<div class="stat-bar"><i style="width:${t.bar}%"></i></div>` : ''}</div></div>`).join('');
@@ -437,14 +429,54 @@
     $('history').innerHTML = nights.length ? nights.map((n) => nightCard(n, max)).join('') : empty;
     document.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => { fillForm(nights.find((x) => x.fecha === b.dataset.edit)); go('registrar'); }));
 
-    const week = nights.slice(0, 7);
-    const avgs = PHASES.map((p) => ({ ...p, v: avgOf(week, (n) => n.reloj?.fases_min?.[p.k]) }));
-    const top = Math.max(1, ...avgs.map((a) => a.v || 0));
-    $('phaseAvg').innerHTML = week.length
-      ? avgs.map((a) => `<div class="avg-row"><span>${a.n}</span><div class="avg-track"><i style="width:${((a.v || 0) / top) * 100}%;background:${a.c}"></i></div><span class="mono">${fmt(a.v)}</span></div>`).join('')
-      : '<p class="empty">Las medias aparecen con tu primera noche.</p>';
+    renderChart();
   }
-  function renderAll() { renderStats(); renderPlan(); renderLists(); }
+
+  // Barras del sueño real de los últimos 14 días (escala de 0 a 10 h), con la meta como línea.
+  function renderChart() {
+    const TOP = 600, byDate = new Map(nights.map((n) => [n.fecha, n]));
+    let d = today();
+    const days = [];
+    for (let i = 0; i < 14; i++) { days.unshift(d); d = prevDay(d); }
+    $('chart').innerHTML = `<div class="chart-goal" style="bottom:${(META.sueno / TOP) * 100}%"><span>${META.sueno / 60} h</span></div>` +
+      days.map((f, i) => {
+        const m = byDate.get(f)?.calculado?.sueno_real_min;
+        const h = m == null ? 0 : Math.min(100, (m / TOP) * 100);
+        const k = m == null ? 'none' : m >= META.sueno ? 'ok' : 'low';
+        const dia = new Date(f + 'T12:00').toLocaleDateString('es-ES', { weekday: 'narrow' });
+        return `<div class="col" title="${esc(fechaLarga(f))}: ${fmt(m)}"><i class="${k}" style="height:${h}%;animation-delay:${i * 35}ms"></i><span>${esc(dia)}</span></div>`;
+      }).join('');
+  }
+
+  // ---------- reloj ----------
+  // Anillo: parte del día despierto (de levantarte a acostarte) que ya ha pasado. Los consejos salen del plan de sueño.
+  const RING = 2 * Math.PI * 52;
+  $('ringFg').style.strokeDasharray = RING;
+  function tick() {
+    const now = new Date(), nm = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+    const bed = toMin(camaObjetivo()), wake = toMin(settings.levantar);
+    const dayLen = (bed - wake + 1440) % 1440 || 1440;
+    const sinceWake = (nm - wake + 1440) % 1440;
+    const awake = sinceWake < dayLen;
+    const left = awake ? dayLen - sinceWake : 1440 - sinceWake;
+    const h = Math.floor(left / 60), m = Math.floor(left % 60);
+    $('clockTime').textContent = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    $('countdown').textContent = h ? `${h} h ${String(m).padStart(2, '0')}` : `${m} min`;
+    $('countLabel').textContent = awake ? 'para acostarte' : 'para levantarte';
+    $('clockSched').textContent = `Cama ${camaObjetivo()} · Levantarte ${settings.levantar}`;
+    $('ringFg').style.strokeDashoffset = RING * (1 - (awake ? sinceWake / dayLen : (sinceWake - dayLen) / (1440 - dayLen)));
+    $('ringFg').classList.toggle('night', !awake);
+    const tip = !awake ? 'Hora de dormir. Si no tienes sueño, luz tenue y algo tranquilo hasta que se te cierren los ojos.'
+      : sinceWake < 30 ? 'Luz intensa ahora: 20–30 min de luz fuerte, y sal fuera en cuanto amanezca.'
+      : left <= 30 ? 'Empieza tu rutina: ducha templada, leer en papel y apuntar lo pendiente de mañana.'
+      : left <= 60 ? 'Última hora: sin pantallas.'
+      : left <= 120 ? 'Luces bajas y cálidas desde ya.'
+      : now.getHours() < 12 ? 'Si tomas café, que sea antes de las 12:00.'
+      : 'Sin café desde las 12:00. Ejercicio intenso, mejor antes de las 18:00.';
+    if ($('clockTip').textContent !== tip) $('clockTip').textContent = tip;
+    document.body.classList.toggle('is-night', !awake || left <= 120);
+  }
+  function renderAll() { renderStats(); renderPlan(); renderLists(); tick(); }
 
   $('objLevantar').addEventListener('change', (e) => { if (cTime(e.target.value)) { settings.levantar = e.target.value; saveSettings(); renderAll(); } });
   const intSetting = (id, key, lo, hi) => $(id).addEventListener('change', (e) => { const v = Number(e.target.value); if (Number.isInteger(v) && v >= lo && v <= hi) { settings[key] = v; saveSettings(); renderAll(); } });
@@ -530,4 +562,5 @@
   renderAll();
   const start = location.hash.slice(1);
   go(screens.includes(start) ? start : 'hoy');
+  setInterval(tick, 1000);
 })();
