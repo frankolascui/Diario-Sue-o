@@ -47,4 +47,5 @@ Es un sitio estático (HTML, CSS y JS), sin compilación.
 - `index.html`: estructura de las pantallas (Hoy, Registrar, Historial, Datos).
 - `styles.css`: estilo.
 - `app.js`: lógica, cálculos, almacenamiento y exportación.
+- `tests/pruebas.mjs`: 86 pruebas automáticas (cálculos, avisos, formulario, plan, reloj, exportación e importación, diseño). Necesita Playwright.
 - `icon.png`: icono para la pantalla de inicio del iPhone (el mismo logo que en la app).
