@@ -4,10 +4,10 @@ Web para registrar cada noche lo que crees que dormiste, lo que dice el Apple Wa
 
 ## Cómo se usa
 
-1. Cada mañana, abre **Registrar**.
-2. Apunta las horas que *crees* (sin mirar el reloj).
-3. Copia de la app Salud → Sueño la hora real de dormirte y despertarte y los minutos de cada fase.
-4. Responde a las preguntas y pulsa **Guardar noche**.
+1. Cada mañana, pésate y pulsa **Registrar noche** en el reloj de Hoy.
+2. Rellena «Lo esencial»: peso, hora de cama y de levantarte, las horas del reloj y el total dormido de Salud → Sueño, descanso y entrenos de ayer. Menos de un minuto.
+3. Si quieres, abre «Más detalles»: fases, lo que crees (solo las primeras 14 noches) y hábitos.
+4. Pulsa **Guardar noche**.
 5. Con 7 noches o más, ve a **Datos → Descargar JSON** y pásaselo a Claude para analizarlo.
 
 ## Qué calcula
@@ -23,6 +23,8 @@ Web para registrar cada noche lo que crees que dormiste, lo que dice el Apple Wa
 Lo que escribes en Registrar se guarda como borrador, así que puedes ir a la app Salud y volver sin perderlo.
 
 - **Reloj** (pantalla Hoy): la hora, un anillo con lo que falta para acostarte (o para levantarte, de noche) y el consejo del plan que toca a esa hora.
+- **Resumen semanal**: esta semana frente a la anterior (sueño, hora de cama, eficiencia, descanso, entrenos y peso).
+- **Novedades**: se abren una vez por versión; también desde Datos.
 - **Gráfico de 14 días**: sueño real de cada noche con la meta de 8 h.
 
 ## Dónde se guardan los datos
@@ -47,5 +49,5 @@ Es un sitio estático (HTML, CSS y JS), sin compilación.
 - `index.html`: estructura de las pantallas (Hoy, Registrar, Historial, Datos).
 - `styles.css`: estilo.
 - `app.js`: lógica, cálculos, almacenamiento y exportación.
-- `tests/pruebas.mjs`: 86 pruebas automáticas (cálculos, avisos, formulario, plan, reloj, exportación e importación, diseño). Necesita Playwright.
+- `tests/pruebas.mjs`: 104 pruebas automáticas (cálculos, avisos, formulario, plan, reloj, exportación e importación, diseño). Necesita Playwright.
 - `icon.png`: icono para la pantalla de inicio del iPhone (el mismo logo que en la app).

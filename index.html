@@ -34,7 +34,7 @@
     <button class="nav-item" data-screen="historial"><span class="nav-glyph" aria-hidden="true">▤</span><span class="nav-label">Historial</span></button>
     <button class="nav-item" data-screen="datos"><span class="nav-glyph" aria-hidden="true">⇅</span><span class="nav-label">Datos</span></button>
     <div class="nav-level mono" id="navCount">0 noches</div>
-    <div class="nav-version mono">Diario de Sueño v1.3</div>
+    <button class="nav-version mono" data-news>Diario de Sueño v1.5 · novedades</button>
   </nav>
 
   <main class="main">
@@ -63,27 +63,25 @@
           <span class="clock-time mono" id="clockTime">--:--</span>
           <span class="clock-sched" id="clockSched"></span>
           <p class="clock-tip" id="clockTip"></p>
+          <div class="row clock-actions"><button class="primary" id="nowGo">▷ Registrar noche</button><span class="now-sub" id="nowSub"></span></div>
+          <p class="backup-note" id="backupNote" hidden></p>
         </div>
       </div>
 
       <div class="stats" id="stats"></div>
 
-      <div class="now">
-        <span class="eyebrow">¿Qué hago ahora?</span>
-        <h2 id="nowTitle">Registrar la noche de hoy</h2>
-        <p class="now-sub" id="nowSub">Copia del Apple Watch las horas y las fases, y responde a las preguntas. Te lleva un minuto.</p>
-        <div class="row">
-          <button class="primary big" id="nowGo">▷ Registrar noche</button>
-          <button class="secondary big" id="nowHist">Ver historial</button>
-        </div>
-        <p class="backup-note" id="backupNote" hidden></p>
-      </div>
 
       <div class="panel">
         <div class="panel-head"><h3>Objetivos del plan</h3><button class="link" data-goto="datos">Cambiar horario →</button></div>
         <p class="hint" id="planSub"></p>
         <div id="plan"></div>
         <p class="training" id="training"></p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Esta semana frente a la anterior</h3></div>
+        <p class="hint" id="weekSub"></p>
+        <div id="week"></div>
       </div>
 
       <div class="columns">
@@ -104,66 +102,58 @@
       <h1 class="screen-title">Registrar noche</h1>
 
       <div class="panel">
-        <span class="eyebrow">La noche</span>
-        <label class="field"><span>Fecha al despertar</span><input type="date" id="fecha" required></label>
-        <p class="hint" id="draftNote" hidden></p>
-      </div>
-
-      <div class="panel">
-        <span class="eyebrow">Peso de esta mañana</span>
-        <p class="hint">Para que el peso de cada día sea comparable: pésate siempre al levantarte, después de ir al baño y antes de comer o beber, con la misma ropa (o sin ella) y en la misma báscula. Fíjate en la media semanal, no en el número de un día.</p>
+        <span class="eyebrow">Lo esencial · menos de 1 minuto</span>
         <div class="grid2">
+          <label class="field"><span>Fecha al despertar</span><input type="date" id="fecha" required></label>
           <label class="field"><span>Peso (kg)</span><input type="text" id="peso" inputmode="decimal" placeholder="72,4" autocomplete="off"></label>
-          <label class="field"><span>¿En las condiciones de siempre?</span><select id="pesoCond"><option value="">—</option><option value="si">Sí</option><option value="no">No (otra hora, otra ropa…)</option></select></label>
         </div>
-      </div>
-
-      <div class="panel">
-        <span class="eyebrow">Lo que tú crees</span>
-        <p class="hint">Sin mirar el reloj. Así sabremos cuánto se parece tu percepción a la realidad.</p>
+        <label class="check"><input type="checkbox" id="pesoCond" checked><span>Pesado en las condiciones de siempre: al levantarte, tras ir al baño, antes de comer, misma ropa y báscula</span></label>
+        <p class="hint" id="draftNote" hidden></p>
         <div class="grid2">
           <label class="field"><span>Me metí en la cama</span><input type="time" id="cama"></label>
-          <label class="field"><span>Creo que me dormí</span><input type="time" id="dormidoPerc"></label>
-          <label class="field"><span>Creo que me desperté</span><input type="time" id="despertarPerc"></label>
           <label class="field"><span>Me levanté</span><input type="time" id="levantado"></label>
-        </div>
-      </div>
-
-      <div class="panel">
-        <span class="eyebrow">Lo que dice el Apple Watch</span>
-        <p class="hint">App Salud → Sueño → la noche de hoy. Puedes cambiar de app: lo que escribes se guarda como borrador.</p>
-        <div class="grid2">
-          <label class="field"><span>Me dormí (real)</span><input type="time" id="dormidoReal"></label>
-          <label class="field"><span>Me desperté (real)</span><input type="time" id="despertarReal"></label>
+          <label class="field"><span>Me dormí (reloj)</span><input type="time" id="dormidoReal"></label>
+          <label class="field"><span>Me desperté (reloj)</span><input type="time" id="despertarReal"></label>
         </div>
         <div class="phase total"><span></span><span>Total dormido según Salud</span>
-          <input type="number" id="tot-h" min="0" max="16" inputmode="numeric" placeholder="0" aria-label="Total dormido, horas">
-          <input type="number" id="tot-m" min="0" max="59" inputmode="numeric" placeholder="0" aria-label="Total dormido, minutos"></div>
-        <div class="phase-head"><span></span><span>Fase</span><span>Horas</span><span>Min</span></div>
-        <div id="phases" class="phases"></div>
+          <input type="number" id="tot-h" min="0" max="16" inputmode="numeric" placeholder="h" aria-label="Total dormido, horas">
+          <input type="number" id="tot-m" min="0" max="59" inputmode="numeric" placeholder="min" aria-label="Total dormido, minutos"></div>
+        <p class="hint">Las horas del reloj y el total salen de Salud → Sueño. Puedes cambiar de app: lo que escribes se guarda como borrador.</p>
+        <div class="grid2">
+          <div class="q"><span class="q-label">¿Te levantaste descansado?</span><span class="hint">1 = destrozado · 5 = como nuevo</span><div class="segmented" data-name="descanso"></div></div>
+          <label class="field"><span>Entrenos ayer</span><input type="number" id="entrenos" min="0" max="4" inputmode="numeric" placeholder="0"></label>
+        </div>
         <div class="live" id="live"></div>
         <ul class="avisos" id="avisos" hidden></ul>
       </div>
 
-      <div class="panel">
-        <span class="eyebrow">Cómo fue la noche</span>
-        <div class="q"><span class="q-label">Calidad del sueño</span><span class="hint">1 = fatal · 5 = genial</span><div class="segmented" data-name="calidad"></div></div>
-        <div class="q"><span class="q-label">¿Te levantaste descansado?</span><span class="hint">1 = destrozado · 5 = como nuevo</span><div class="segmented" data-name="descanso"></div></div>
-        <div class="q"><span class="q-label">Estrés al acostarte</span><span class="hint">1 = nada · 5 = mucho</span><div class="segmented" data-name="estres"></div></div>
-        <div class="grid2">
-          <label class="field"><span>Veces que te despertaste</span><input type="number" id="despertares" min="0" max="30" inputmode="numeric"></label>
-          <label class="field"><span>Minutos despierto en la noche</span><input type="number" id="despiertoNoche" min="0" max="600" inputmode="numeric"><small class="hint">Lo que crees, sumando todos los despertares.</small></label>
-          <label class="field"><span>Siesta ayer (min)</span><input type="number" id="siesta" min="0" max="300" inputmode="numeric"></label>
-          <label class="field"><span>Última cafeína</span><input type="time" id="cafeina"><small class="hint">Vacío si no tomaste.</small></label>
-          <label class="field"><span>Última comida</span><input type="time" id="cena"></label>
-          <label class="field"><span>Pantalla en la última hora</span><select id="pantalla"><option value="">—</option><option value="no">No</option><option value="poco">Menos de 15 min</option><option value="si">Sí, bastante</option></select></label>
-          <label class="field"><span>Entrenos ayer</span><input type="number" id="entrenos" min="0" max="4" inputmode="numeric"><small class="hint">Pon 0 si no entrenaste.</small></label>
-          <label class="field"><span>Ejercicio ayer</span><select id="ejercicio"><option value="">—</option><option value="no">No</option><option value="manana">Por la mañana</option><option value="tarde">Por la tarde</option><option value="noche">Por la noche</option></select></label>
-          <label class="field"><span>Luz natural ayer</span><select id="luz"><option value="">—</option><option value="poca">Casi nada</option><option value="algo">Un rato</option><option value="mucha">Más de 1 h</option></select></label>
-          <label class="field"><span>Sueños</span><select id="suenos"><option value="">—</option><option value="no">No recuerdo</option><option value="si">Sí</option><option value="pesadilla">Pesadilla</option></select></label>
+      <details class="panel more" id="more">
+        <summary><span class="eyebrow">Más detalles (opcional)</span><span class="hint">Fases, percepción y hábitos</span></summary>
+        <div class="more-body">
+          <div id="percBlock">
+            <p class="q-label">Lo que tú crees, sin mirar el reloj</p>
+            <p class="hint" id="percHint">Solo las primeras 14 noches, para medir cuánto se parece tu percepción a la realidad.</p>
+            <div class="grid2">
+              <label class="field"><span>Creo que me dormí</span><input type="time" id="dormidoPerc"></label>
+              <label class="field"><span>Creo que me desperté</span><input type="time" id="despertarPerc"></label>
+            </div>
+          </div>
+          <div class="phase-head"><span></span><span>Fases (Salud)</span><span>Horas</span><span>Min</span></div>
+          <div id="phases" class="phases"></div>
+          <div class="q"><span class="q-label">Estrés al acostarte</span><span class="hint">1 = nada · 5 = mucho</span><div class="segmented" data-name="estres"></div></div>
+          <div class="grid2">
+            <label class="field"><span>Veces que te despertaste</span><input type="number" id="despertares" min="0" max="30" inputmode="numeric"></label>
+            <label class="field"><span>Minutos despierto en la noche</span><input type="number" id="despiertoNoche" min="0" max="600" inputmode="numeric"></label>
+            <label class="field"><span>Siesta ayer (min)</span><input type="number" id="siesta" min="0" max="300" inputmode="numeric"></label>
+            <label class="field"><span>Última cafeína</span><input type="time" id="cafeina"></label>
+            <label class="field"><span>Última comida</span><input type="time" id="cena"></label>
+            <label class="field"><span>Pantalla en la última hora</span><select id="pantalla"><option value="">—</option><option value="no">No</option><option value="poco">Menos de 15 min</option><option value="si">Sí, bastante</option></select></label>
+            <label class="field"><span>Ejercicio ayer</span><select id="ejercicio"><option value="">—</option><option value="no">No</option><option value="manana">Por la mañana</option><option value="tarde">Por la tarde</option><option value="noche">Por la noche</option></select></label>
+            <label class="field"><span>Luz natural ayer</span><select id="luz"><option value="">—</option><option value="poca">Casi nada</option><option value="algo">Un rato</option><option value="mucha">Más de 1 h</option></select></label>
+          </div>
+          <label class="field"><span>Notas</span><textarea id="notas" rows="3" placeholder="Examen mañana, ruido en la calle, cené tarde…"></textarea></label>
         </div>
-        <label class="field"><span>Notas</span><textarea id="notas" rows="3" placeholder="Examen mañana, ruido en la calle, cené tarde…"></textarea></label>
-      </div>
+      </details>
 
       <div class="row sticky-actions">
         <button type="submit" class="primary big">✓ Guardar noche</button>
@@ -220,12 +210,31 @@
         <span class="toast" id="impToast" role="status"></span>
       </div>
       <div class="panel">
+        <span class="eyebrow">Versión</span>
+        <p class="hint">Diario de Sueño v1.5.</p>
+        <button class="secondary" data-news>Ver novedades</button>
+      </div>
+      <div class="panel">
         <span class="eyebrow">Zona peligrosa</span>
         <div class="row" id="wipeRow"><button class="ghost danger" id="wipeBtn">Borrar todas las noches</button></div>
       </div>
     </section>
   </main>
 </div>
+<dialog class="news" id="news" aria-labelledby="newsTitle">
+  <span class="eyebrow">Novedades · v1.5</span>
+  <h2 id="newsTitle">Tu diario, ahora de salud</h2>
+  <ul class="news-list">
+    <li><b>Formulario rápido.</b> Lo esencial cabe en una tarjeta y se rellena en menos de un minuto. Fases y hábitos, en «Más detalles».</li>
+    <li><b>Reloj y cuenta atrás.</b> Arriba ves cuánto falta para acostarte y el consejo del plan para esa hora.</li>
+    <li><b>Resumen semanal.</b> Esta semana frente a la anterior: sueño, hora de cama, eficiencia, descanso, entrenos y peso.</li>
+    <li><b>Metas nuevas.</b> Hora de cama ±15 min, 8 h de sueño real, entrenos de la semana y peso diario con su media.</li>
+    <li><b>Avisos.</b> Si las fases, el total o las horas no cuadran, la app te lo dice antes de guardar.</li>
+    <li><b>Logo, gráfico de 14 días y animaciones.</b></li>
+    <li><b>Fuera.</b> «Calidad del sueño» y «Sueños». «Lo que tú crees» solo se pregunta las primeras 14 noches.</li>
+  </ul>
+  <button class="primary big" id="newsOk">Entendido</button>
+</dialog>
 <script src="app.js"></script>
 </body>
 </html>

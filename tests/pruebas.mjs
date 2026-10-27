@@ -9,7 +9,7 @@ const ok = (cond, name, extra = '') => results.push({ grp: cur, name, pass: !!co
 const eq = (a, b, name) => ok(JSON.stringify(a) === JSON.stringify(b), name, `esperado ${JSON.stringify(b)}, obtenido ${JSON.stringify(a)}`);
 
 const browser = await chromium.launch();
-async function fresh({ time = NOW, width = 390, seed = null, settings = null, reduced = false } = {}) {
+async function fresh({ time = NOW, width = 390, seed = null, settings = { novedadesVistas: '1.5' }, reduced = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height: 844 }, timezoneId: 'Europe/Madrid', locale: 'es-ES', acceptDownloads: true, reducedMotion: reduced ? 'reduce' : 'no-preference' });
   const p = await ctx.newPage();
   p.errs = [];
@@ -34,7 +34,8 @@ const night = (fecha, o = {}) => ({
   cuerpo: { peso_kg: 72, mismas_condiciones: true, ...(o.c || {}) },
 });
 const stored = (p) => p.evaluate(() => JSON.parse(localStorage.getItem('diario-sueno:noches') || '[]'));
-const setT = async (p, id, v) => { await p.fill('#' + id, v); };
+// Los campos opcionales están en «Más detalles», que se abre antes de escribir en ellos.
+const setT = async (p, id, v) => { await p.evaluate((i) => { const el = document.getElementById(i); const d = el.closest('details'); if (d) d.open = true; }, id); await p.fill('#' + id, v); };
 async function fillNight(p, d) {
   for (const [k, v] of Object.entries(d)) await setT(p, k, v);
 }
@@ -113,7 +114,7 @@ cur = 'Peso';
   ok((await avisos(p)).some((x) => x.includes('más de 2 kg')), 'Avisa si cambia más de 2 kg respecto al día anterior');
   await setT(p, 'peso', '300');
   ok((await avisos(p)).some((x) => x.includes('entre 25 y 250')), 'Avisa si el peso está fuera de rango');
-  await setT(p, 'peso', '72.6'); await p.selectOption('#pesoCond', 'no');
+  await setT(p, 'peso', '72.6'); await p.uncheck('#pesoCond');
   ok((await avisos(p)).some((x) => x.includes('condiciones distintas')), 'Avisa de que un pesaje en otras condiciones no cuenta');
 }
 {
@@ -149,9 +150,9 @@ cur = 'Formulario';
   eq((await stored(p)).length, 2, '«Borrar noche» pide confirmación y se puede cancelar');
   await p.click('[data-del=ask]'); await p.click('[data-del=yes]');
   eq((await stored(p)).map((n) => n.fecha), ['2026-10-25'], 'Borrar una noche solo borra esa');
-  await p.click('.segmented[data-name=calidad] .seg[data-v="3"]');
-  await p.click('.segmented[data-name=calidad] .seg[data-v="3"]');
-  eq(await p.evaluate(() => document.querySelectorAll('.segmented[data-name=calidad] .seg.on').length), 0, 'Pulsar otra vez una nota la deselecciona');
+  await p.click('.segmented[data-name=descanso] .seg[data-v="3"]');
+  await p.click('.segmented[data-name=descanso] .seg[data-v="3"]');
+  eq(await p.evaluate(() => document.querySelectorAll('.segmented[data-name=descanso] .seg.on').length), 0, 'Pulsar otra vez una nota la deselecciona');
 }
 
 // ---------- E. Panel del plan y entrenos ----------
@@ -284,6 +285,73 @@ cur = 'Datos';
   await fillNight(p, { cama: '21:00', levantado: '06:00', dormidoReal: '21:10', despertarReal: '05:50', 'tot-h': '8', 'tot-m': '20' });
   await p.click('button[type=submit]');
   ok((await p.innerText('#toast')).includes('No se pudo guardar'), 'Si el navegador no deja guardar, lo dice');
+}
+
+// ---------- G2. Versión 1.5 ----------
+cur = 'Versión 1.5';
+{
+  const p = await fresh({ settings: null, seed: [night('2026-10-26')] });
+  ok(await p.isVisible('#news'), 'La bandeja de novedades se abre la primera vez');
+  await p.click('#newsOk');
+  ok(!(await p.isVisible('#news')), '«Entendido» la cierra');
+  await p.reload();
+  ok(!(await p.isVisible('#news')), 'No vuelve a salir al recargar');
+  await p.click('[data-screen=datos]'); await p.click('#s-datos [data-news]');
+  ok(await p.isVisible('#news'), 'Se puede volver a abrir desde Datos');
+  await p.keyboard.press('Escape');
+  ok(!(await p.isVisible('#news')), 'Escape la cierra');
+}
+{
+  const p = await fresh();
+  await p.click('#nowGo');
+  const visibles = await p.$$eval('#s-registrar input, #s-registrar select, #s-registrar textarea', (els) => els.filter((e) => e.checkVisibility()).length);
+  ok(visibles <= 11, `Formulario rápido: ${visibles} campos visibles (antes 33)`, visibles);
+  ok(!(await p.evaluate(() => document.getElementById('more').open)), '«Más detalles» empieza cerrado');
+  ok(!(await p.$('#suenos')) && !(await p.$('.segmented[data-name=calidad]')), '«Sueños» y «Calidad» ya no están');
+  await fillNight(p, { cama: '21:00', levantado: '06:00', dormidoReal: '21:12', despertarReal: '05:52', 'tot-h': '8', 'tot-m': '20', peso: '72,5', entrenos: '1' });
+  await p.click('.segmented[data-name=descanso] .seg[data-v="4"]');
+  await p.click('button[type=submit]');
+  const n = (await stored(p))[0];
+  ok(n && n.calculado.eficiencia_pct === 93 && n.cuerpo.mismas_condiciones === true && n.preguntas.entrenos_ayer === 1, 'Se guarda una noche solo con lo esencial', JSON.stringify(n?.calculado));
+}
+{
+  const seed = [night('2026-10-26', { q: { calidad: 3, suenos: 'si', notas: 'antigua' } })];
+  const p = await fresh({ seed });
+  await p.click('[data-screen=historial]'); await p.click('#history [data-edit="2026-10-26"]');
+  ok(await p.evaluate(() => document.getElementById('more').open), 'Editar una noche con detalles abre «Más detalles»');
+  await p.click('.segmented[data-name=descanso] .seg[data-v="5"]');
+  await p.click('button[type=submit]');
+  const n = (await stored(p))[0];
+  ok(n.preguntas.calidad === 3 && n.preguntas.suenos === 'si', 'Editar una noche antigua conserva su calidad y sueños', JSON.stringify(n.preguntas));
+}
+{
+  const mk = (k) => { const d = new Date('2026-10-26T12:00'); d.setDate(d.getDate() - k); return night(d.toISOString().slice(0, 10)); };
+  const p13 = await fresh({ seed: Array.from({ length: 13 }, (_, k) => mk(k)) });
+  await p13.click('#nowGo'); await p13.evaluate(() => { document.getElementById('more').open = true; });
+  ok(await p13.isVisible('#dormidoPerc'), 'Con 13 noches aún pregunta «lo que tú crees»');
+  const p14 = await fresh({ seed: Array.from({ length: 14 }, (_, k) => mk(k)) });
+  await p14.click('#nowGo'); await p14.evaluate(() => { document.getElementById('more').open = true; });
+  ok(!(await p14.isVisible('#dormidoPerc')), 'Con 14 noches deja de preguntarlo');
+}
+{
+  // Semana actual (lun 26–) frente a la pasada (lun 19–dom 25).
+  const seed = [
+    night('2026-10-27', { c: { peso_kg: 73 }, r: { total_dormido_min: 490 } }),
+    night('2026-10-26', { c: { peso_kg: 73 }, r: { total_dormido_min: 470 } }),
+    night('2026-10-25', { c: { peso_kg: 72 }, r: { total_dormido_min: 440 } }),
+    night('2026-10-24', { c: { peso_kg: 72 }, r: { total_dormido_min: 460 } }),
+  ];
+  const p = await fresh({ seed });
+  const rows = await p.$$eval('#week tbody tr', (trs) => trs.map((tr) => [...tr.children].map((td) => td.textContent + '|' + td.className)));
+  eq(rows[0], ['Sueño real|', '8h 00m|', '7h 30m|', '+30 min|ok'], 'Resumen: sueño de esta semana frente a la anterior');
+  eq(rows[5], ['Peso medio|', '73.0 kg|', '72.0 kg|', '+1.0 kg|na'], 'Resumen: peso medio sin juzgar si es bueno o malo');
+  ok((await p.innerText('#weekSub')).includes('2 noches apuntadas. La pasada: 2'), 'Resumen: noches apuntadas por semana');
+}
+{
+  const p = await fresh({ seed: [night('2026-10-27')] });
+  eq(await p.innerText('#nowSub'), '✓ Noche de hoy registrada', 'El reloj dice si la noche de hoy ya está registrada');
+  await p.click('#nowGo');
+  eq(await p.inputValue('#fecha'), '2026-10-27', 'El botón del reloj abre la noche de hoy');
 }
 
 // ---------- H. Diseño y accesibilidad ----------

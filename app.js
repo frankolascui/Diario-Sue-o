@@ -89,7 +89,6 @@
   }
   document.querySelectorAll('.nav-item').forEach((b) => b.addEventListener('click', () => go(b.dataset.screen)));
   document.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => go(b.dataset.goto)));
-  $('nowHist').addEventListener('click', () => go('historial'));
   $('nowGo').addEventListener('click', () => {
     const d = readKey(DRAFT_KEY, null), ex = nights.find((n) => n.fecha === today());
     if (d?.night?.fecha === today()) loadDraft(d);
@@ -101,6 +100,8 @@
   // ---------- formulario ----------
   let origFecha = null; // fecha de la noche guardada que se está editando (para moverla si cambias la fecha)
   let confirmSig = null; // avisos ya mostrados: el segundo «Guardar» guarda igualmente
+  // «Calidad» y «Sueños» ya no se preguntan (v1.5); al editar una noche antigua se conservan tal cual.
+  let carry = { calidad: null, suenos: null };
   $('phases').innerHTML = PHASES.map((p) => `<div class="phase"><span class="dot" style="background:${p.c}"></span><span>${p.n}</span>
     <input type="number" id="ph-${p.k}-h" min="0" max="14" inputmode="numeric" placeholder="0" aria-label="${p.n}, horas">
     <input type="number" id="ph-${p.k}-m" min="0" max="59" inputmode="numeric" placeholder="0" aria-label="${p.n}, minutos"></div>`).join('');
@@ -129,14 +130,14 @@
       percibido: { cama: $('cama').value || null, dormido: $('dormidoPerc').value || null, despertar: $('despertarPerc').value || null, levantado: $('levantado').value || null },
       reloj: { dormido: $('dormidoReal').value || null, despertar: $('despertarReal').value || null, total_dormido_min: hm('tot-h', 'tot-m'), fases_min: fases },
       preguntas: {
-        calidad: scales.calidad, descanso: scales.descanso, estres: scales.estres,
+        calidad: carry.calidad, descanso: scales.descanso, estres: scales.estres,
         entrenos_ayer: num($('entrenos').value), despertares: num($('despertares').value), despierto_noche_min: num($('despiertoNoche').value), siesta_min: num($('siesta').value),
         ultima_cafeina: $('cafeina').value || null, ultima_comida: $('cena').value || null,
         pantalla_ultima_hora: $('pantalla').value || null, ejercicio: $('ejercicio').value || null,
-        luz_natural: $('luz').value || null, suenos: $('suenos').value || null, notas: $('notas').value.trim() || null,
+        luz_natural: $('luz').value || null, suenos: carry.suenos, notas: $('notas').value.trim() || null,
       },
     };
-    r.cuerpo = { peso_kg: cKg($('peso').value.trim().replace(',', '.')), mismas_condiciones: $('pesoCond').value === '' ? null : $('pesoCond').value === 'si' };
+    r.cuerpo = { peso_kg: cKg($('peso').value.trim().replace(',', '.')), mismas_condiciones: $('peso').value.trim() === '' ? null : $('pesoCond').checked };
     r.calculado = derive(r);
     r.calculado.avisos.push(...weightAvisos(r));
     return r;
@@ -202,17 +203,21 @@
     clearForm(true);
     $('fecha').value = r.fecha || today();
     const p = r.percibido || {}, w = r.reloj || {}, q = r.preguntas || {};
-    $('peso').value = r.cuerpo?.peso_kg ?? ''; $('pesoCond').value = r.cuerpo?.mismas_condiciones == null ? '' : r.cuerpo.mismas_condiciones ? 'si' : 'no';
+    $('peso').value = r.cuerpo?.peso_kg ?? ''; $('pesoCond').checked = r.cuerpo?.mismas_condiciones !== false;
     $('cama').value = p.cama || ''; $('dormidoPerc').value = p.dormido || ''; $('despertarPerc').value = p.despertar || ''; $('levantado').value = p.levantado || '';
     $('dormidoReal').value = w.dormido || ''; $('despertarReal').value = w.despertar || '';
     setHm('tot-h', 'tot-m', w.total_dormido_min ?? null);
     PHASES.forEach((ph) => setHm(`ph-${ph.k}-h`, `ph-${ph.k}-m`, w.fases_min?.[ph.k] ?? null));
-    ['calidad', 'descanso', 'estres'].forEach((n) => { scales[n] = q[n] ?? null; paintScale(n); });
+    ['descanso', 'estres'].forEach((n) => { scales[n] = q[n] ?? null; paintScale(n); });
+    carry = { calidad: q.calidad ?? null, suenos: q.suenos ?? null };
     $('entrenos').value = q.entrenos_ayer ?? ''; $('despertares').value = q.despertares ?? ''; $('despiertoNoche').value = q.despierto_noche_min ?? ''; $('siesta').value = q.siesta_min ?? '';
     $('cafeina').value = q.ultima_cafeina || ''; $('cena').value = q.ultima_comida || '';
     $('pantalla').value = q.pantalla_ultima_hora || ''; $('ejercicio').value = q.ejercicio || '';
-    $('luz').value = q.luz_natural || ''; $('suenos').value = q.suenos || ''; $('notas').value = q.notas || '';
+    $('luz').value = q.luz_natural || ''; $('notas').value = q.notas || '';
     if (!fromDraft) origFecha = nights.some((n) => n.fecha === r.fecha) ? r.fecha : null;
+    // «Más detalles» se abre solo si la noche ya tiene algo apuntado ahí.
+    $('more').open = [...$('more').querySelectorAll('input, select, textarea')].some((el) => el.value !== '') || scales.estres != null;
+    updatePerc();
     updateLive();
   }
   function loadDraft(d) {
@@ -225,9 +230,18 @@
   function clearForm(keepDraft) {
     const f = $('fecha').value; $('s-registrar').reset(); $('fecha').value = f || today();
     Object.keys(scales).forEach((n) => { scales[n] = null; paintScale(n); });
-    origFecha = null; confirmSig = null; $('draftNote').hidden = true;
+    origFecha = null; confirmSig = null; carry = { calidad: null, suenos: null }; $('draftNote').hidden = true;
+    $('more').open = false; updatePerc();
     toast('toast', '');
     if (keepDraft !== true) { try { localStorage.removeItem(DRAFT_KEY); } catch {} updateLive(); }
+  }
+  // «Lo que tú crees» solo hace falta las primeras 14 noches: con eso ya sabemos cuánto falla tu percepción.
+  const PERC_NOCHES = 14;
+  function updatePerc() {
+    const hechas = nights.filter((n) => n.percibido?.dormido || n.percibido?.despertar).length;
+    const conDato = $('dormidoPerc').value || $('despertarPerc').value;
+    $('percBlock').hidden = hechas >= PERC_NOCHES && !conDato;
+    $('percHint').textContent = `Solo las primeras ${PERC_NOCHES} noches (llevas ${Math.min(hechas, PERC_NOCHES)}), para medir cuánto se parece tu percepción a la realidad.`;
   }
   function saveDraft() { writeKey(DRAFT_KEY, { night: readForm(), orig: origFecha }); }
 
@@ -318,10 +332,7 @@
     $('navCount').textContent = `${nights.length} ${nights.length === 1 ? 'noche' : 'noches'}`;
 
     const done = nights.some((n) => n.fecha === today());
-    $('nowTitle').textContent = done ? 'Noche de hoy registrada' : 'Registrar la noche de hoy';
-    $('nowSub').textContent = done
-      ? (nights.length >= 7 ? 'Ya tienes datos suficientes: exporta el JSON y pide a Claude que lo analice.' : `Llevas ${nights.length} de 7 noches para el primer análisis. Mañana, otra.`)
-      : 'Copia del Apple Watch las horas y las fases, y responde a las preguntas. Te lleva un minuto.';
+    $('nowSub').textContent = done ? '✓ Noche de hoy registrada' : 'Menos de 1 minuto';
     $('nowGo').textContent = done ? '✎ Editar noche de hoy' : '▷ Registrar noche';
 
     const days = settings.ultimaCopia ? Math.floor((Date.now() - new Date(settings.ultimaCopia)) / 864e5) : null;
@@ -344,12 +355,15 @@
 
   // Entrenos de una semana (lunes a domingo). Cada noche guarda los entrenos del día anterior a su fecha.
   // offset 0 = esta semana, -1 = la pasada.
-  function trainingWeek(offset) {
+  function weekBounds(offset) {
     const d = new Date(today() + 'T12:00');
     d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + offset * 7);
     const start = d.toISOString().slice(0, 10);
     d.setDate(d.getDate() + 6);
-    const end = d.toISOString().slice(0, 10), hoy = today();
+    return { start, end: d.toISOString().slice(0, 10) };
+  }
+  function trainingWeek(offset) {
+    const { start, end } = weekBounds(offset), hoy = today();
     let total = 0, dias = 0, sinDato = 0;
     const byDay = new Map(nights.map((n) => [prevDay(n.fecha), n.preguntas?.entrenos_ayer]));
     for (let x = start; x <= end && x < hoy; x = nextDay(x)) {
@@ -358,6 +372,28 @@
       if (v == null) sinDato++; else total += v;
     }
     return { total, dias, sinDato };
+  }
+
+  // Resumen semanal (lunes a domingo, por la fecha en que te despiertas) para la revisión de cada semana.
+  function renderWeek() {
+    const sem = (o) => { const { start, end } = weekBounds(o); return nights.filter((n) => n.fecha >= start && n.fecha <= end); };
+    const a = sem(0), b = sem(-1);
+    const rows = [
+      ['Sueño real', (w) => avgOf(w, (n) => n.calculado?.sueno_real_min), fmt, 1, (d) => `${d > 0 ? '+' : '−'}${Math.abs(Math.round(d))} min`],
+      ['Desviación hora de cama', (w) => avgOf(w, (n) => (n.percibido?.cama ? Math.abs(diffClock(camaObjetivo(), n.percibido.cama)) : null)), (v) => `±${Math.round(v)} min`, -1, (d) => `${d > 0 ? '+' : '−'}${Math.abs(Math.round(d))} min`],
+      ['Eficiencia', (w) => avgOf(w, (n) => n.calculado?.eficiencia_pct), (v) => `${Math.round(v)}%`, 1, (d) => `${d > 0 ? '+' : '−'}${Math.abs(Math.round(d))} pts`],
+      ['Descanso', (w) => avgOf(w, (n) => n.preguntas?.descanso), (v) => `${v.toFixed(1)}/5`, 1, (d) => `${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(1)}`],
+      ['Entrenos', (w, o) => trainingWeek(o).total, (v) => String(v), 1, (d) => `${d > 0 ? '+' : '−'}${Math.abs(d)}`],
+      ['Peso medio', (w) => avgOf(w.filter((n) => n.cuerpo?.mismas_condiciones !== false), (n) => n.cuerpo?.peso_kg), (v) => `${v.toFixed(1)} kg`, 0, (d) => `${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(1)} kg`],
+    ];
+    $('weekSub').textContent = `Esta semana: ${a.length} ${a.length === 1 ? 'noche' : 'noches'} apuntadas. La pasada: ${b.length}.`;
+    $('week').innerHTML = `<div class="plan-wrap"><table class="plan-table week-table"><thead><tr><th>Medida</th><th>Esta</th><th>Pasada</th><th>Cambio</th></tr></thead><tbody>` +
+      rows.map(([name, get, show, better, diff]) => {
+        const x = get(a, 0), y = get(b, -1);
+        const d = x != null && y != null ? x - y : null;
+        const cls = d == null || Math.abs(d) < 1e-9 || !better ? 'na' : d * better > 0 ? 'ok' : 'no';
+        return `<tr><td>${name}</td><td>${x == null ? '—' : esc(show(x))}</td><td>${y == null ? '—' : esc(show(y))}</td><td class="${cls}">${d == null ? '—' : Math.abs(d) < 1e-9 ? '=' : esc(diff(d))}</td></tr>`;
+      }).join('') + '</tbody></table></div>';
   }
 
   // Comprueba una noche contra las metas del plan. null = falta el dato.
@@ -476,7 +512,7 @@
     if ($('clockTip').textContent !== tip) $('clockTip').textContent = tip;
     document.body.classList.toggle('is-night', !awake || left <= 120);
   }
-  function renderAll() { renderStats(); renderPlan(); renderLists(); tick(); }
+  function renderAll() { renderStats(); renderPlan(); renderWeek(); renderLists(); updatePerc(); tick(); }
 
   $('objLevantar').addEventListener('change', (e) => { if (cTime(e.target.value)) { settings.levantar = e.target.value; saveSettings(); renderAll(); } });
   const intSetting = (id, key, lo, hi) => $(id).addEventListener('change', (e) => { const v = Number(e.target.value); if (Number.isInteger(v) && v >= lo && v <= hi) { settings[key] = v; saveSettings(); renderAll(); } });
@@ -563,4 +599,14 @@
   const start = location.hash.slice(1);
   go(screens.includes(start) ? start : 'hoy');
   setInterval(tick, 1000);
+
+  // Bandeja de novedades: se abre una vez por versión y luego desde Datos o la barra lateral.
+  const VERSION = '1.5';
+  const openNews = () => { try { $('news').showModal(); } catch { $('news').setAttribute('open', ''); } };
+  const closeNews = () => { settings.novedadesVistas = VERSION; saveSettings(); try { $('news').close(); } catch { $('news').removeAttribute('open'); } };
+  document.querySelectorAll('[data-news]').forEach((b) => b.addEventListener('click', openNews));
+  $('newsOk').addEventListener('click', closeNews);
+  $('news').addEventListener('cancel', () => { settings.novedadesVistas = VERSION; saveSettings(); });
+  $('news').addEventListener('click', (e) => { if (e.target === $('news')) closeNews(); });
+  if (settings.novedadesVistas !== VERSION) openNews();
 })();
