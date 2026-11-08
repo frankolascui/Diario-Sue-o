@@ -9,13 +9,71 @@ const ok = (cond, name, extra = '') => results.push({ grp: cur, name, pass: !!co
 const eq = (a, b, name) => ok(JSON.stringify(a) === JSON.stringify(b), name, `esperado ${JSON.stringify(b)}, obtenido ${JSON.stringify(a)}`);
 
 const browser = await chromium.launch();
-async function fresh({ time = NOW, width = 390, seed = null, settings = { novedadesVistas: '1.5' }, reduced = false } = {}) {
+
+// ---------- Nube falsa (misma forma que el cliente de Supabase) ----------
+// La «base de datos» vive en Node y la comparten todos los navegadores de una prueba, como Supabase.
+// Cada consulta va con el usuario de la sesión, que solo ve sus filas (como el RLS).
+const newCloud = () => ({ users: {}, nights: new Map(), settings: new Map(), fail: false, seq: 0, ops: [] });
+function nubeOp(c, o) {
+  c.ops.push(o.op + (o.t ? ':' + o.t + ':' + o.kind : ''));
+  if (c.fail) return { error: 'Failed to fetch' };
+  if (o.op === 'otp') { c.users[o.email] ??= 'uid-' + (Object.keys(c.users).length + 1); return {}; }
+  if (o.op === 'verify') return o.token === '12345678' ? { user: { id: c.users[o.email], email: o.email } } : { error: 'Token has expired or is invalid' };
+  if (!o.uid) return { error: 'permission denied' };
+  const stamp = () => new Date(Date.UTC(2026, 10, 1) + ++c.seq * 1000).toISOString();
+  if (o.t === 'nights' && o.kind === 'select') {
+    let rows = [...c.nights.values()].filter((r) => r.user_id === o.uid && (!o.gt || r.updated_at > o.gt));
+    rows.sort((a, b) => a.updated_at.localeCompare(b.updated_at));
+    if (o.range) rows = rows.slice(o.range[0], o.range[1] + 1);
+    return { data: rows.map(({ fecha, data, deleted, updated_at }) => ({ fecha, data, deleted, updated_at })) };
+  }
+  if (o.t === 'nights' && o.kind === 'upsert') {
+    for (const r of [].concat(o.rows)) { if (r.user_id !== o.uid) return { error: 'new row violates row-level security policy' }; c.nights.set(o.uid + '|' + r.fecha, { ...structuredClone(r), updated_at: stamp() }); }
+    return { data: null };
+  }
+  if (o.t === 'settings' && o.kind === 'select') { const r = c.settings.get(o.uid); return { data: r ? { data: r.data, updated_at: r.updated_at } : null }; }
+  if (o.t === 'settings' && o.kind === 'upsert') { c.settings.set(o.uid, { data: structuredClone(o.rows.data), updated_at: stamp() }); return { data: null }; }
+  return { error: 'op desconocida' };
+}
+const FAKE_CLIENT = () => {
+  const me = () => JSON.parse(localStorage.getItem('fake-session') || 'null');
+  const builder = (t) => {
+    const o = { op: 'q', t };
+    const b = {
+      select() { o.kind = 'select'; return b; },
+      gt(_c, v) { o.gt = v; return b; },
+      order() { return b; },
+      range(a, z) { o.range = [a, z]; return b; },
+      maybeSingle() { return b; },
+      upsert(rows) { o.kind = 'upsert'; o.rows = rows; return b; },
+      then(res, rej) { return window.__nubeOp({ ...o, uid: me()?.id }).then((r) => ({ data: r.data ?? null, error: r.error ? { message: r.error } : null })).then(res, rej); },
+    };
+    return b;
+  };
+  window.__nubeFalsa = {
+    auth: {
+      async getSession() { const u = me(); return { data: { session: u ? { user: u } : null } }; },
+      async signInWithOtp({ email }) { const r = await window.__nubeOp({ op: 'otp', email }); return { error: r.error ? { message: r.error } : null }; },
+      async verifyOtp({ email, token }) {
+        const r = await window.__nubeOp({ op: 'verify', email, token });
+        if (r.error) return { data: null, error: { message: r.error } };
+        localStorage.setItem('fake-session', JSON.stringify(r.user)); return { data: { user: r.user }, error: null };
+      },
+      async signOut() { localStorage.removeItem('fake-session'); return { error: null }; },
+    },
+    schema() { return { from: builder }; },
+  };
+};
+async function fresh({ time = NOW, width = 390, seed = null, settings = { novedadesVistas: '1.6' }, reduced = false, nube = null } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height: 844 }, timezoneId: 'Europe/Madrid', locale: 'es-ES', acceptDownloads: true, reducedMotion: reduced ? 'reduce' : 'no-preference' });
   const p = await ctx.newPage();
   p.errs = [];
   p.on('pageerror', (e) => p.errs.push(e.message));
   p.on('console', (m) => m.type() === 'error' && !/fonts\.googleapis|ERR_|Failed to load resource/.test(m.text()) && p.errs.push(m.text()));
   await p.clock.install({ time: new Date(time) });
+  p.libReqs = [];
+  p.on('request', (r) => { if (r.url().includes('vendor/supabase')) p.libReqs.push(r.url()); });
+  if (nube) { await p.exposeFunction('__nubeOp', (op) => nubeOp(nube, op)); await p.addInitScript(FAKE_CLIENT); }
   await p.addInitScript(([s, st]) => {
     if (sessionStorage.getItem('seeded')) return;
     sessionStorage.setItem('seeded', '1');
@@ -352,6 +410,109 @@ cur = 'Versión 1.5';
   eq(await p.innerText('#nowSub'), '✓ Noche de hoy registrada', 'El reloj dice si la noche de hoy ya está registrada');
   await p.click('#nowGo');
   eq(await p.inputValue('#fecha'), '2026-10-27', 'El botón del reloj abre la noche de hoy');
+}
+
+// ---------- G3. Cuenta y nube (v1.6) ----------
+cur = 'Cuenta y nube';
+const cloudRows = (c, uid = 'uid-1') => [...c.nights.values()].filter((r) => r.user_id === uid);
+async function login(p, email = 'nico@example.com', code = '12345678') {
+  await p.click('[data-screen=datos]');
+  await p.fill('#email', email); await p.click('#sendCode');
+  await p.waitForSelector('#codeForm:not([hidden])');
+  await p.fill('#code', code); await p.click('#verify');
+}
+const synced = (p) => p.waitForFunction(() => /Sincronizado/.test(document.getElementById('nubeToast').textContent), null, { timeout: 5000 });
+const syncNow = async (p) => { await p.evaluate(() => { document.getElementById('nubeToast').textContent = ''; }); await p.click('#syncNow'); await synced(p); };
+{
+  const p = await fresh({ seed: [night('2026-10-27')] });
+  await p.click('[data-screen=datos]');
+  ok(await p.isVisible('#emailForm') && !(await p.isVisible('#cuentaDentro')), 'Sin cuenta: Datos ofrece entrar con email');
+  await p.waitForTimeout(300);
+  eq(p.libReqs, [], 'Sin cuenta no se descarga la librería de la nube');
+  ok(!p.errs.length, 'Sin cuenta: sin errores', p.errs);
+  await p.context().close();
+}
+{
+  const c = newCloud();
+  // Dispositivo A (iPhone): ya tenía dos noches de antes de la nube.
+  const a = await fresh({ nube: c, seed: [night('2026-10-27', { q: { descanso: 5 } }), night('2026-10-26')] });
+  await login(a, 'nico@example.com', '000');
+  await a.waitForFunction(() => /incorrecto/.test(document.getElementById('nubeToast').textContent));
+  ok(true, 'Un código incorrecto da un error claro');
+  await a.fill('#code', '12345678'); await a.click('#verify'); await synced(a);
+  ok(await a.isVisible('#cuentaDentro') && (await a.innerText('#cuentaEmail')) === 'nico@example.com', 'Con el código correcto queda conectado');
+  eq(cloudRows(c).map((r) => r.fecha).sort(), ['2026-10-26', '2026-10-27'], 'Migración: al entrar se suben las noches que ya había');
+  ok(cloudRows(c).every((r) => r.data.calculado === undefined && r.deleted === false), 'Se sube el registro sin los cálculos (se rehacen al bajar)');
+  ok(c.settings.get('uid-1')?.data?.levantar === '06:00', 'También se sube el horario');
+
+  // Dispositivo B (PC): tenía otra noche; al entrar se juntan las tres.
+  const b = await fresh({ nube: c, width: 1280, seed: [night('2026-10-25')] });
+  await login(b); await synced(b);
+  eq((await stored(b)).map((n) => n.fecha), ['2026-10-27', '2026-10-26', '2026-10-25'], 'El segundo dispositivo baja las noches de la nube y conserva la suya');
+  eq((await stored(b))[0].preguntas.descanso, 5, 'Las noches bajadas llegan completas');
+  ok((await stored(b))[0].calculado?.sueno_real_min > 0, 'Y con los cálculos rehechos');
+  await syncNow(a);
+  eq((await stored(a)).map((n) => n.fecha), ['2026-10-27', '2026-10-26', '2026-10-25'], 'El primero recibe la noche del segundo');
+
+  // Editar en B y ver el cambio en A.
+  await b.click('[data-screen=historial]'); await b.click('#history [data-edit="2026-10-26"]');
+  await b.click('.segmented[data-name=descanso] .seg[data-v="2"]');
+  await b.click('button[type=submit]'); await b.click('button[type=submit]');
+  await b.click('[data-screen=datos]'); await syncNow(b);
+  await syncNow(a);
+  eq((await stored(a)).find((n) => n.fecha === '2026-10-26')?.preguntas.descanso, 2, 'Una noche editada en un dispositivo cambia en el otro');
+
+  // Borrar en A y que desaparezca en B.
+  await a.click('[data-screen=historial]'); await a.click('#history [data-edit="2026-10-25"]');
+  await a.click('[data-del=ask]'); await a.click('[data-del=yes]');
+  await a.click('[data-screen=datos]'); await syncNow(a);
+  ok(cloudRows(c).find((r) => r.fecha === '2026-10-25')?.deleted === true, 'Borrar una noche la marca como borrada en la nube');
+  await syncNow(b);
+  ok(!(await stored(b)).some((n) => n.fecha === '2026-10-25'), 'Y desaparece del otro dispositivo');
+
+  // Horario.
+  await a.fill('#objLevantar', '06:30'); await a.dispatchEvent('#objLevantar', 'change');
+  await syncNow(a); await syncNow(b);
+  eq(await b.inputValue('#objLevantar'), '06:30', 'El horario objetivo viaja entre dispositivos');
+
+  // Conflicto: la edición más reciente gana aunque la otra se suba después.
+  const inc = (await stored(a)).find((n) => n.fecha === '2026-10-27');
+  c.nights.get('uid-1|2026-10-27').data = { ...c.nights.get('uid-1|2026-10-27').data, actualizado: '2000-01-01T00:00:00.000Z', preguntas: { ...inc.preguntas, descanso: 1 } };
+  c.nights.get('uid-1|2026-10-27').updated_at = '2026-12-01T00:00:00.000Z';
+  await a.click('[data-screen=historial]'); await a.click('#history [data-edit="2026-10-27"]');
+  await a.click('.segmented[data-name=descanso] .seg[data-v="3"]');
+  await a.click('button[type=submit]'); await a.click('button[type=submit]');
+  await a.click('[data-screen=datos]'); await syncNow(a);
+  eq(c.nights.get('uid-1|2026-10-27').data.preguntas.descanso, 3, 'Si la nube trae una versión más antigua, gana el cambio local');
+
+  // Sin conexión: el cambio espera y se sube después.
+  c.fail = true;
+  await a.click('[data-screen=historial]'); await a.click('#history [data-edit="2026-10-26"]');
+  await a.click('.segmented[data-name=descanso] .seg[data-v="4"]');
+  await a.click('button[type=submit]'); await a.click('button[type=submit]');
+  await a.click('[data-screen=datos]'); await a.click('#syncNow');
+  await a.waitForFunction(() => /se subirán/.test(document.getElementById('nubeToast').textContent));
+  ok(true, 'Sin conexión avisa de que los cambios se subirán luego');
+  eq((await stored(a)).find((n) => n.fecha === '2026-10-26')?.preguntas.descanso, 4, 'Sin conexión la noche se guarda igual en el dispositivo');
+  c.fail = false; await syncNow(a);
+  eq(c.nights.get('uid-1|2026-10-26').data.preguntas.descanso, 4, 'Al volver la conexión se sube');
+
+  // Recargar: la sesión sigue y se sincroniza sola.
+  const before = c.ops.length;
+  await b.reload(); await b.click('[data-screen=datos]'); await synced(b);
+  ok(await b.isVisible('#cuentaDentro'), 'Al recargar sigue con la sesión iniciada');
+  eq((await stored(b)).find((n) => n.fecha === '2026-10-26')?.preguntas.descanso, 4, 'Y al abrir trae lo nuevo');
+  ok(c.ops.slice(before).filter((x) => x.startsWith('q:nights:select')).length === 1, 'Abrir la app hace una sola consulta de noches', c.ops.slice(before));
+
+  // Otra cuenta en el mismo navegador: no se mezclan.
+  await b.click('#signOut');
+  await b.waitForFunction(() => /Sesión cerrada/.test(document.getElementById('nubeToast').textContent));
+  eq((await stored(b)).length, 2, 'Cerrar sesión deja las noches en el dispositivo');
+  await login(b, 'otra@example.com'); await synced(b);
+  eq((await stored(b)).length, 0, 'Con otra cuenta no se ven las noches de la anterior');
+  eq(cloudRows(c, 'uid-2').length, 0, 'Ni se suben a la otra cuenta');
+  ok(!a.errs.length && !b.errs.length, 'Nube: sin errores de JavaScript', [...a.errs, ...b.errs]);
+  await a.context().close(); await b.context().close();
 }
 
 // ---------- H. Diseño y accesibilidad ----------

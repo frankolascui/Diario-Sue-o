@@ -330,3 +330,10 @@ body.is-night .clock { background: radial-gradient(120% 140% at 0% 0%, color-mix
 .news-list b { color: var(--fg); }
 @keyframes newsIn { from { opacity: 0; transform: translateY(16px) scale(.97); } to { opacity: 1; transform: none; } }
 .news-list:focus, .news-list:focus-visible { outline: none; }
+
+/* Cuenta y nube (v1.6) */
+.grow { flex: 1 1 220px; }
+#cuenta form.row { align-items: flex-end; margin-top: 10px; }
+#cuenta .toast { display: block; margin-top: 8px; }
+.news-old summary { cursor: pointer; color: var(--muted); font-size: 15px; margin-bottom: 8px; }
+.news-old .news-list { max-height: 30vh; }

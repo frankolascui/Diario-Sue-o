@@ -34,7 +34,7 @@
     <button class="nav-item" data-screen="historial"><span class="nav-glyph" aria-hidden="true">▤</span><span class="nav-label">Historial</span></button>
     <button class="nav-item" data-screen="datos"><span class="nav-glyph" aria-hidden="true">⇅</span><span class="nav-label">Datos</span></button>
     <div class="nav-level mono" id="navCount">0 noches</div>
-    <button class="nav-version mono" data-news>Diario de Sueño v1.5 · novedades</button>
+    <button class="nav-version mono" data-news>Diario de Sueño v1.6 · novedades</button>
   </nav>
 
   <main class="main">
@@ -180,6 +180,29 @@
     <!-- DATOS -->
     <section class="screen" id="s-datos" hidden>
       <h1 class="screen-title">Datos</h1>
+      <div class="panel" id="cuenta">
+        <span class="eyebrow">Cuenta y nube</span>
+        <div id="cuentaFuera">
+          <p class="hint">Entra con el mismo email que en Excelsior RPG. Tus noches y tu horario se guardan en la nube y los ves en el iPhone y en el PC. Sin cuenta, todo sigue en este navegador.</p>
+          <form class="row" id="emailForm">
+            <label class="field grow"><span>Email</span><input type="email" id="email" autocomplete="email" inputmode="email" required></label>
+            <button class="primary" type="submit" id="sendCode">Enviarme un código</button>
+          </form>
+          <form class="row" id="codeForm" hidden>
+            <label class="field grow"><span>Código del correo</span><input type="text" id="code" autocomplete="one-time-code" inputmode="numeric" required></label>
+            <button class="primary" type="submit" id="verify">Entrar</button>
+            <button class="ghost" type="button" id="otherEmail">Cambiar email</button>
+          </form>
+        </div>
+        <div id="cuentaDentro" hidden>
+          <p class="hint">Conectado como <b id="cuentaEmail"></b>.</p>
+          <div class="row">
+            <button class="secondary" id="syncNow">Sincronizar ahora</button>
+            <button class="ghost" id="signOut">Cerrar sesión</button>
+          </div>
+        </div>
+        <span class="toast" id="nubeToast" role="status"></span>
+      </div>
       <div class="panel">
         <span class="eyebrow">Tu horario objetivo</span>
         <p class="hint">Lo usa el panel «Objetivos del plan». Cámbialo en cada escalón del plan.</p>
@@ -205,13 +228,13 @@
       </div>
       <div class="panel">
         <span class="eyebrow">Importar</span>
-        <p class="hint">Tus noches se guardan en este navegador. Para pasarlas a otro dispositivo, descarga el JSON aquí e impórtalo allí. Las noches con la misma fecha se sustituyen.</p>
+        <p class="hint">Sin cuenta, tus noches se guardan solo en este navegador: para pasarlas a otro dispositivo, descarga el JSON aquí e impórtalo allí. Las noches con la misma fecha se sustituyen.</p>
         <label class="secondary file-btn">Importar JSON<input type="file" id="importFile" accept="application/json,.json"></label>
         <span class="toast" id="impToast" role="status"></span>
       </div>
       <div class="panel">
         <span class="eyebrow">Versión</span>
-        <p class="hint">Diario de Sueño v1.5.</p>
+        <p class="hint">Diario de Sueño v1.6.</p>
         <button class="secondary" data-news>Ver novedades</button>
       </div>
       <div class="panel">
@@ -222,8 +245,14 @@
   </main>
 </div>
 <dialog class="news" id="news" aria-labelledby="newsTitle">
-  <span class="eyebrow">Novedades · v1.5</span>
-  <h2 id="newsTitle">Tu diario, ahora de salud</h2>
+  <span class="eyebrow">Novedades · v1.6</span>
+  <h2 id="newsTitle">Tu diario, en la nube</h2>
+  <ul class="news-list">
+    <li><b>Cuenta y nube.</b> En Datos, entra con el mismo email que en Excelsior RPG. Tus noches y tu horario se guardan en la nube y se ven igual en el iPhone y en el PC.</li>
+    <li><b>Tus noches de siempre.</b> Al entrar por primera vez se suben las que ya tenías en este navegador. Si tenías un diario en cada dispositivo, se juntan: en cada noche gana la última que editaste.</li>
+    <li><b>Sin cuenta, igual que antes.</b> Todo sigue funcionando en este navegador.</li>
+  </ul>
+  <details class="news-old"><summary>Lo que trajo la v1.5</summary>
   <ul class="news-list">
     <li><b>Formulario rápido.</b> Lo esencial cabe en una tarjeta y se rellena en menos de un minuto. Fases y hábitos, en «Más detalles».</li>
     <li><b>Reloj y cuenta atrás.</b> Arriba ves cuánto falta para acostarte y el consejo del plan para esa hora.</li>
@@ -233,8 +262,10 @@
     <li><b>Logo, gráfico de 14 días y animaciones.</b></li>
     <li><b>Fuera.</b> «Calidad del sueño» y «Sueños». «Lo que tú crees» solo se pregunta las primeras 14 noches.</li>
   </ul>
+  </details>
   <button class="primary big" id="newsOk">Entendido</button>
 </dialog>
 <script src="app.js"></script>
+<script src="nube.js"></script>
 </body>
 </html>

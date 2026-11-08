@@ -29,10 +29,17 @@ Lo que escribes en Registrar se guarda como borrador, así que puedes ir a la ap
 
 ## Dónde se guardan los datos
 
-En el `localStorage` del navegador donde la uses. No hay servidor ni cuenta:
+Siempre en el `localStorage` del navegador, para que la app funcione al instante y sin conexión.
 
-- Si la usas en el iPhone y en el PC, son dos diarios distintos. Pasa los datos con **Exportar JSON** → **Importar JSON**.
-- Si borras los datos de Safari, se borran las noches. Descarga el JSON de vez en cuando como copia.
+**Con cuenta (Datos → Cuenta y nube):** entras con el mismo email y código que en Excelsior RPG (es la misma cuenta). Las noches y el horario se copian al Supabase común de Excelsior, en el esquema `health`, y se ven en todos tus dispositivos:
+
+- Al entrar por primera vez en un navegador, se suben las noches que ya tenía. Si había un diario en cada dispositivo, se juntan noche a noche y gana la última edición.
+- Cada cambio (guardar, borrar, importar, horario) se sube unos segundos después. Sin conexión queda pendiente y se sube en la siguiente sincronía.
+- La app trae lo nuevo al abrirse y al volver a ella (como mucho cada 2 minutos), y solo pide las filas que cambiaron.
+- Si entra otra cuenta en el mismo navegador, sus noches no se mezclan con las de la anterior.
+- El SQL de las tablas está en `docs/supabase-health.sql`.
+
+**Sin cuenta:** todo se queda en ese navegador, como antes. Pasa los datos con **Exportar JSON** → **Importar JSON**, y descarga el JSON de vez en cuando como copia.
 
 En el iPhone: Safari → Compartir → **Añadir a pantalla de inicio** para abrirla como una app.
 
@@ -49,5 +56,8 @@ Es un sitio estático (HTML, CSS y JS), sin compilación.
 - `index.html`: estructura de las pantallas (Hoy, Registrar, Historial, Datos).
 - `styles.css`: estilo.
 - `app.js`: lógica, cálculos, almacenamiento y exportación.
-- `tests/pruebas.mjs`: 104 pruebas automáticas (cálculos, avisos, formulario, plan, reloj, exportación e importación, diseño). Necesita Playwright.
+- `nube.js`: cuenta (email + código) y sincronía con Supabase.
+- `vendor/supabase-2.117.2.js`: librería oficial de Supabase (MIT), copiada para no depender de un CDN. Solo se carga si hay sesión.
+- `docs/supabase-health.sql`: esquema `health` (tablas, RLS y permisos).
+- `tests/pruebas.mjs`: 131 pruebas automáticas (cálculos, avisos, formulario, plan, reloj, exportación e importación, nube simulada, diseño). Necesita Playwright.
 - `icon.png`: icono para la pantalla de inicio del iPhone (el mismo logo que en la app).

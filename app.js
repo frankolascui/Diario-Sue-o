@@ -1,4 +1,5 @@
-// Diario de Sueño — datos en localStorage de este navegador; exportar/importar JSON para moverlos o analizarlos.
+// Diario de Sueño — datos en localStorage de este navegador (fuente inmediata). Con cuenta, nube.js los copia
+// a Supabase y los trae de otros dispositivos. Exportar/importar JSON sigue sirviendo para analizarlos.
 (() => {
   'use strict';
   const KEY = 'diario-sueno:noches';
@@ -269,7 +270,7 @@
     if (act === 'ask') return renderDelete(true);
     if (act === 'yes') {
       const f = origFecha;
-      nights = nights.filter((n) => n.fecha !== f); persist(); clearForm(); renderAll();
+      nights = nights.filter((n) => n.fecha !== f); persist(); clearForm(); renderAll(); changed([f]);
       toast('toast', `Noche del ${f} borrada.`, 'ok');
       return;
     }
@@ -304,6 +305,7 @@
     if (!persist()) { toast('toast', 'No se pudo guardar: este navegador bloquea el almacenamiento (¿modo privado?).', 'err'); return; }
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
     origFecha = r.fecha; confirmSig = null; $('draftNote').hidden = true;
+    changed(moved ? [r.fecha, moved] : [r.fecha]);
     renderAll(); renderDelete();
     toast('toast', moved ? `Noche movida del ${moved} al ${r.fecha}.` : `Noche del ${r.fecha} guardada.`, 'ok');
   });
@@ -514,10 +516,10 @@
   }
   function renderAll() { renderStats(); renderPlan(); renderWeek(); renderLists(); updatePerc(); tick(); }
 
-  $('objLevantar').addEventListener('change', (e) => { if (cTime(e.target.value)) { settings.levantar = e.target.value; saveSettings(); renderAll(); } });
-  const intSetting = (id, key, lo, hi) => $(id).addEventListener('change', (e) => { const v = Number(e.target.value); if (Number.isInteger(v) && v >= lo && v <= hi) { settings[key] = v; saveSettings(); renderAll(); } });
+  $('objLevantar').addEventListener('change', (e) => { if (cTime(e.target.value)) { settings.levantar = e.target.value; saveSettings(); renderAll(); changed([], true); } });
+  const intSetting = (id, key, lo, hi) => $(id).addEventListener('change', (e) => { const v = Number(e.target.value); if (Number.isInteger(v) && v >= lo && v <= hi) { settings[key] = v; saveSettings(); renderAll(); changed([], true); } });
   intSetting('objEntrenos', 'entrenosPlan', 1, 21); intSetting('objEntrenosMin', 'entrenosMin', 1, 21);
-  $('objHoras').addEventListener('change', (e) => { const h = Number(e.target.value); if (h >= 6 && h <= 11) { settings.horas = h; saveSettings(); renderAll(); } });
+  $('objHoras').addEventListener('change', (e) => { const h = Number(e.target.value); if (h >= 6 && h <= 11) { settings.horas = h; saveSettings(); renderAll(); changed([], true); } });
 
   // ---------- exportar / importar ----------
   const sorted = () => [...nights].sort((a, b) => a.fecha.localeCompare(b.fecha));
@@ -576,7 +578,7 @@
       valid.forEach((n) => byDate.set(n.fecha, n));
       nights = [...byDate.values()];
       if (!persist()) throw new Error('storage');
-      renderAll();
+      renderAll(); changed(valid.map((n) => n.fecha));
       toast('impToast', `${valid.length} ${valid.length === 1 ? 'noche importada' : 'noches importadas'}${skipped ? ` (${skipped} sin fecha válida, ignoradas)` : ''}.`, 'ok');
     } catch (err) {
       toast('impToast', err.message === 'storage' ? 'No se pudo guardar en este navegador.' : 'Ese archivo no es un JSON del Diario de Sueño.', 'err');
@@ -587,9 +589,37 @@
   $('wipeRow').innerHTML = WIPE_IDLE;
   $('wipeRow').addEventListener('click', (e) => {
     const act = e.target.closest('[data-wipe]')?.dataset.wipe; if (!act) return;
-    if (act === 'yes') { nights = []; persist(); renderAll(); }
+    if (act === 'yes') { const gone = nights.map((n) => n.fecha); nights = []; persist(); renderAll(); changed(gone); }
     $('wipeRow').innerHTML = act === 'ask' ? WIPE_ASK : WIPE_IDLE;
   });
+
+  // ---------- puente con la nube (nube.js) ----------
+  // La app avisa de cada cambio hecho a mano; nube.js lo apunta como pendiente y lo sube.
+  const SYNC_SETTINGS = ['levantar', 'horas', 'entrenosPlan', 'entrenosMin'];
+  function changed(fechas, ajustes = false) {
+    if (ajustes) { settings.ajustesActualizado = new Date().toISOString(); saveSettings(); }
+    document.dispatchEvent(new CustomEvent('diario:cambio', { detail: { fechas, ajustes } }));
+  }
+  window.DiarioApp = {
+    noches: () => nights,
+    ajustes: () => ({ ...Object.fromEntries(SYNC_SETTINGS.map((k) => [k, settings[k]])), actualizado: settings.ajustesActualizado || null }),
+    // Aplica lo que llega de la nube sin volver a avisar. «noches»: [{ fecha, data }] (data null = borrada).
+    aplicar({ noches = [], ajustes = null, vaciar = false } = {}) {
+      if (vaciar) nights = [];
+      const byDate = new Map(nights.map((n) => [n.fecha, n]));
+      noches.forEach(({ fecha, data }) => { if (validNight(data) && data.fecha === fecha) byDate.set(fecha, normalize(data)); else byDate.delete(fecha); });
+      nights = [...byDate.values()];
+      persist();
+      if (ajustes) {
+        if (cTime(ajustes.levantar)) settings.levantar = ajustes.levantar;
+        if (ajustes.horas >= 6 && ajustes.horas <= 11) settings.horas = ajustes.horas;
+        ['entrenosPlan', 'entrenosMin'].forEach((k) => { if (Number.isInteger(ajustes[k]) && ajustes[k] >= 1 && ajustes[k] <= 21) settings[k] = ajustes[k]; });
+        settings.ajustesActualizado = ajustes.actualizado || settings.ajustesActualizado;
+        saveSettings();
+      }
+      renderAll();
+    },
+  };
 
   // ---------- arranque ----------
   $('fecha').value = today();
@@ -601,7 +631,7 @@
   setInterval(tick, 1000);
 
   // Bandeja de novedades: se abre una vez por versión y luego desde Datos o la barra lateral.
-  const VERSION = '1.5';
+  const VERSION = '1.6';
   const openNews = () => { try { $('news').showModal(); } catch { $('news').setAttribute('open', ''); } };
   const closeNews = () => { settings.novedadesVistas = VERSION; saveSettings(); try { $('news').close(); } catch { $('news').removeAttribute('open'); } };
   document.querySelectorAll('[data-news]').forEach((b) => b.addEventListener('click', openNews));
