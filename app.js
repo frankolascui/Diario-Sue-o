@@ -600,6 +600,51 @@
   go(screens.includes(start) ? start : 'hoy');
   setInterval(tick, 1000);
 
+  // ---------- Cierre de la web (nov 2026) ----------
+  // El diario vive ahora en Excelsior RPG (Reino de la Salud). Esta web solo ayuda a llevarse las noches:
+  // «Llevar mis noches» abre Excelsior con todas las noches comprimidas en el enlace (#traer-salud=…),
+  // que nunca pasa por un servidor; allí se pregunta antes de guardarlas. Sin noches, solo el botón para ir.
+  const RPG_URL = 'PON-AQUI-LA-DIRECCION-DE-EXCELSIOR-RPG';
+  const CLOSED = true;
+  const b64url = (bytes) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+  async function packNights() {
+    const bytes = new TextEncoder().encode(JSON.stringify(sorted().map(({ calculado, ...n }) => n)));
+    try {
+      if ('CompressionStream' in window) {
+        const z = await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer();
+        return 'z' + b64url(new Uint8Array(z));
+      }
+    } catch {}
+    return 'j' + b64url(bytes);
+  }
+  function showClosing() {
+    $('cierre').hidden = false;
+    const go = $('cierreGo');
+    go.href = RPG_URL;
+    $('cierreStay').addEventListener('click', () => { $('cierre').hidden = true; });
+    $('cierreJson').addEventListener('click', () => download(`sueno-${today()}.json`, exportJson(), 'application/json'));
+    if (!nights.length) {
+      $('cierreJson').hidden = true;
+      $('cierreHint').textContent = 'No tienes noches guardadas en este navegador. Si usabas la cuenta, tus noches ya están en Excelsior RPG.';
+      return;
+    }
+    const n = nights.length;
+    $('cierreCount').textContent = `Tienes ${n} ${n === 1 ? 'noche guardada' : 'noches guardadas'} en este navegador.`;
+    go.textContent = n === 1 ? 'Llevar mi noche a Excelsior RPG' : `Llevar mis ${n} noches a Excelsior RPG`;
+    go.setAttribute('aria-disabled', 'true');
+    packNights().then((payload) => {
+      // Un enlace enorme podría no abrir en algún navegador: entonces, solo la copia.
+      if (payload.length > 1_500_000) {
+        $('cierreHint').textContent = 'Tienes tantas noches que no caben en un enlace: descarga la copia y en Excelsior RPG ve a Salud → Datos → Importar.';
+      } else {
+        go.href = `${RPG_URL}#traer-salud=${payload}`;
+        $('cierreHint').textContent = 'Se abre Excelsior RPG y te pregunta si quieres traer las noches. Si ya tenías una noche con la misma fecha, se sustituye. También puedes descargar la copia e importarla en Salud → Datos.';
+      }
+      go.removeAttribute('aria-disabled');
+    });
+  }
+  if (CLOSED) showClosing();
+
   // Bandeja de novedades: se abre una vez por versión y luego desde Datos o la barra lateral.
   const VERSION = '1.5';
   const openNews = () => { try { $('news').showModal(); } catch { $('news').setAttribute('open', ''); } };
@@ -608,5 +653,5 @@
   $('newsOk').addEventListener('click', closeNews);
   $('news').addEventListener('cancel', () => { settings.novedadesVistas = VERSION; saveSettings(); });
   $('news').addEventListener('click', (e) => { if (e.target === $('news')) closeNews(); });
-  if (settings.novedadesVistas !== VERSION) openNews();
+  if (!CLOSED && settings.novedadesVistas !== VERSION) openNews();
 })();

@@ -330,3 +330,16 @@ body.is-night .clock { background: radial-gradient(120% 140% at 0% 0%, color-mix
 .news-list b { color: var(--fg); }
 @keyframes newsIn { from { opacity: 0; transform: translateY(16px) scale(.97); } to { opacity: 1; transform: none; } }
 .news-list:focus, .news-list:focus-visible { outline: none; }
+
+/* ---------- Cierre de la web (nov 2026) ---------- */
+.cierre { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(6px); overflow-y: auto; }
+.cierre[hidden] { display: none; }
+.cierre-card { width: min(520px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); padding: 28px 24px; display: grid; gap: 14px; }
+.cierre-card h1 { font-family: var(--display); font-size: clamp(26px, 6vw, 34px); line-height: 1.1; margin: 0; color: var(--gold); }
+.cierre-card p { margin: 0; line-height: 1.5; }
+.cierre-count { font-family: var(--mono); color: var(--c1); }
+.cierre-count:empty, .cierre .hint:empty { display: none; }
+.cierre-actions { display: grid; gap: 10px; }
+.cierre-actions .primary, .cierre-actions .secondary { text-align: center; text-decoration: none; padding: 12px 16px; }
+.cierre-actions .primary[aria-disabled="true"] { opacity: .55; pointer-events: none; }
+.cierre-stay { justify-self: center; }

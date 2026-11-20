@@ -1,5 +1,7 @@
 # Diario de Sueño
 
+> **Cerrada (noviembre de 2026).** El diario vive ahora en Excelsior RPG (Reino de la Salud). Esta web solo muestra el aviso de cierre y ayuda a llevarse las noches: «Llevar mis noches» abre Excelsior con las noches comprimidas en el enlace (`#traer-salud=…`). Pruebas del cierre: `tests/cierre.mjs`. `tests/pruebas.mjs` es de la v1.5 y ya no aplica con el aviso encima.
+
 Web para registrar cada noche lo que crees que dormiste, lo que dice el Apple Watch (horas y fases) y unas preguntas sobre la noche. Exporta todo a JSON o CSV para analizarlo. Usa el mismo estilo que Excelsior (tema Poseidón).
 
 ## Cómo se usa

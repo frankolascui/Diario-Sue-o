@@ -235,6 +235,21 @@
   </ul>
   <button class="primary big" id="newsOk">Entendido</button>
 </dialog>
+<!-- Cierre (nov 2026): el diario vive ahora en Excelsior RPG. Ver «Cierre de la web» en app.js. -->
+<section class="cierre" id="cierre" role="dialog" aria-modal="true" aria-labelledby="cierreH" hidden>
+  <div class="cierre-card">
+    <span class="eyebrow">Excelsior Health</span>
+    <h1 id="cierreH">El Diario de Sueño se ha mudado</h1>
+    <p>Ahora vive dentro de <b>Excelsior RPG</b>, en el Reino de la Salud: el mismo diario, con tu cuenta de Excelsior y junto a tus misiones, hábitos y Deep Work. Esta web se va a cerrar.</p>
+    <p class="cierre-count" id="cierreCount"></p>
+    <div class="cierre-actions">
+      <a class="primary" id="cierreGo" target="_blank" rel="noopener">Ir a Excelsior RPG</a>
+      <button class="secondary" id="cierreJson" type="button">Descargar una copia (JSON)</button>
+    </div>
+    <p class="hint" id="cierreHint"></p>
+    <button class="ghost cierre-stay" id="cierreStay" type="button">Ver mis datos aquí</button>
+  </div>
+</section>
 <script src="app.js"></script>
 </body>
 </html>
